@@ -1,0 +1,226 @@
+---
+title: "DATA 621 Assignment 2"
+author: "Darwhin Gomez"
+format:
+ pdf:
+    toc: true
+    code-line-numbers: true
+    
+    code-overflow: wrap
+editor: visual
+---
+
+```{r}
+library(dplyr)
+library(caret)
+library(pROC)
+library(ggplot2)
+```
+
+## 1- Loading Data
+
+```{r}
+data <- read.csv("classification-output-data.csv")
+```
+
+```{r}
+head(data,5)
+```
+
+The class column represents the actual class whilst the scored.class represents the predicted class.
+
+## 2- Table function
+
+```{r, 2}
+conf_matrix<-table(data$class, data$scored.class)
+conf_matrix
+```
+
+Interpretation of the Values:
+
+-   True Positives (TP) = 119: The model *correctly* predicted Positive cases.
+
+-   True Negatives (TN) = 27: The model *correctly* predicted Negative cases.
+
+-   False Positives (FP) = 30: The model *incorrectly* predicted Positive (Type I Error or "False Alarm"). The actual case was Negative.
+
+-   False Negatives (FN) = 5: The model *incorrectly* predicted Negative (Type II Error or "Miss"). The actual case was Positive.
+
+## 3- Accuracy function
+
+```{r, 3}
+acc_func <- function(df, actual, predicted){
+  cm <- table(df[[actual]], df[[predicted]])
+  tp <- cm[2,2]
+  tn <- cm[1,1]
+  fp <- cm[1,2]
+  fn <- cm[2,1]
+  
+  (tp + tn) / (tp + tn + fp + fn)
+  
+ 
+  
+}
+computed_acc<- acc_func(data, "class", "scored.class")
+print(paste("The calculated accuracy of the model is:",
+            round(acc_func(data, "class", "scored.class"),4)))
+
+```
+
+## 4- Classification Error Rate
+
+```{r, 4,}
+error_func <- function(df, actual, predicted){
+  cm <- table(df[[actual]], df[[predicted]])
+  tp <- cm[2,2]
+  tn <- cm[1,1]
+  fp <- cm[1,2]
+  fn <- cm[2,1]
+  
+(fp + fn)/(tp + tn + fp +fn)
+  
+ 
+  
+}
+computed_err <- error_func(data, "class", "scored.class")
+print(paste("The calculated classification error rate of the model is:",
+            round(error_func(data, "class", "scored.class"),4)))
+```
+
+\
+We can verify by adding the accuracy and the error rate which should sum to 1
+
+```{r, 4b}
+print(computed_acc + computed_err)
+```
+
+## 5- Precision
+
+```{r, 5}
+precision_func <- function(df, actual, predicted) {
+  cm <- table(df[[actual]], df[[predicted]])
+  TP <- cm[2,2]; FP <- cm[1,2]
+  TP / (TP + FP)
+}
+ calculated_prec<- precision_func(data, "class", "scored.class")
+ print(paste("The calculated precision of the model is:",
+             round(precision_func(data, "class", "scored.class"),4)))
+```
+
+## 6- Sensitivity (Recall)
+
+```{r, 6}
+sensitivity_func <- function(df, actual, predicted) {
+  cm <- table(df[[actual]], df[[predicted]])
+  TP <- cm[2,2]; FN <- cm[2,1]
+  TP / (TP + FN)
+}
+calculated_sensitivity<-sensitivity_func(data, "class", "scored.class")
+print(paste("The calculated  Sensiticity (recall rate) of the model is:", 
+            round(sensitivity_func(data, "class", "scored.class"),4)))
+```
+
+## 7- Specificity
+
+```{r,7}
+specificity_func <- function(df, actual, predicted) {
+  cm <- table(df[[actual]], df[[predicted]])
+  TN <- cm[1,1]; FP <- cm[1,2]
+  TN / (TN + FP)
+}
+ calculated_specif<-specificity_func(data, "class", "scored.class")
+ print(paste("The calculated  Specificity of the model is:", 
+             round(specificity_func(data, "class", "scored.class"),4)))
+
+```
+
+## 8- F1 Score
+
+```{r}
+f1_score_func <- function(df, actual, predicted) {
+  p <- precision_func(df, actual, predicted)
+  r <- sensitivity_func(df, actual, predicted)
+  2 * (p * r) / (p + r)
+}
+calculated_f1<-f1_score_func(data, "class", "scored.class")
+ print(paste("The calculated  F1 score of the model is:", 
+             round(f1_score_func(data, "class", "scored.class"),4)))
+```
+
+The F1-score will always be between 0 and 1 because it is based on precision and recall, which are both proportions that range from 0 to 1. When either precision or recall is 0, the F1-score is also 0. When both are 1, the F1-score reaches its maximum value of 1. Therefore, since it is the harmonic mean of two values that cannot be less than 0 or greater than 1, the F1-score will always fall between 0 and 1.
+
+## 10- ROC Curve Function and plot
+
+```{r 10roc}
+roc_curve_custom <- function(df, actual, prob_col) {
+  thresholds <- seq(1, 0, -0.01)
+
+  TPR <- FPR <- numeric(length(thresholds))
+  
+  for (i in seq_along(thresholds)) {
+    t <- thresholds[i]
+    df$pred <- ifelse(df[[prob_col]] >= t, 1, 0)
+    
+   
+    cm <- table(factor(df[[actual]], levels = c(0,1)),
+                factor(df$pred, levels = c(0,1)))
+    
+    TP <- cm[2,2]; TN <- cm[1,1]; FP <- cm[1,2]; FN <- cm[2,1]
+    TPR[i] <- TP / (TP + FN)
+    FPR[i] <- FP / (FP + TN)
+  }
+  
+  auc <- sum(diff(FPR) * (head(TPR, -1) + tail(TPR, -1)) / 2)
+  
+  p<-ggplot(data.frame(FPR, TPR), aes(x = FPR, y = TPR)) +
+    geom_line(color = "black") +
+    geom_abline(linetype = "dashed", color = "red") +
+    labs(title = "Custom ROC Curve", x = "False Positive Rate",
+         y = "True Positive Rate") +
+    theme_minimal()
+   
+   
+  return(list( Plot=p,AUC = auc))
+}
+
+roc_curve_custom(data, "class", "scored.probability")
+```
+
+## 11- All Metrics Comparison Caret
+
+```{r,11}
+data.frame(
+  Accuracy = computed_acc,
+  Error_Rate = computed_err,
+  Precision = calculated_prec,
+  Sensitivity = calculated_sensitivity,
+  Specificity = calculated_specif,
+  F1_Score = calculated_f1
+)
+
+```
+
+```{r, 11a}
+caret_conf <- confusionMatrix(
+  factor(data$scored.class),
+  factor(data$class),
+  positive = "1"
+)
+caret_conf
+
+```
+
+The functions match output from the caret package indicating caret can be used to calculate these metrics reliably and easily.
+
+## 12-13 pROC
+
+```{r 1213proc}
+roc_obj <- roc(data$class, data$scored.probability)
+plot(roc_obj, col="black", main="pROC ROC Curve",legacy.axes = TRUE)
+auc(roc_obj)
+
+```
+
+The computed ROC plot and the pROC plot display very similar curves, with the custom AUC at 0.8488 and the pROC AUC at 0.8503, indicating highly consistent results in the calculation of the area under the curve. Overall, both the ROC plots and AUC values demonstrate that the model is performing well, particularly in accurately identifying positive cases.\
+\
+The packages work well and should be used to produce classification metrics efficiently and reliably.
