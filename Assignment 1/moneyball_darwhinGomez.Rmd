@@ -1,0 +1,12 @@
+---
+title: "Money BALL R Notebook"
+author: "Darwhin Gomez"
+date: "9/23/2025"
+output: html_notebook
+---
+
+```{r include=FALSE}
+library(tidyverse)
+library(ggplot2)
+
+```

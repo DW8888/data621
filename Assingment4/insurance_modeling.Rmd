@@ -1,0 +1,885 @@
+---
+title: "Modeling car Insurance accidents and cost of accidents"
+author: "Darwhin Gomez"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+  
+editor: visual
+---
+
+```{r lib , include =FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(GGally)
+library(broom)
+library(caret)
+library(MASS)
+library(psych)
+library(skimr)
+library(glmnet)
+library(randomForest)
+library(xgboost)
+library(e1071)
+library(pROC)
+
+```
+
+```{r ingest data, include=FALSE, echo=FALSE}
+# read data
+train <- read_csv("insurance-training-data.csv")
+eval  <- read_csv("insurance-evaluation-data.csv")
+
+# Make a full, untouched copy of the training data
+train_df_original <- train
+
+
+```
+
+## Modeling for car Insurance
+
+Car insurance provides financial protection in cases of property damage or personal injury resulting from automobile accidents. Insurers must estimate two key outcomes for each policyholder:
+
+1.  The probability that the driver will be involved in a crash, and
+
+2.  The expected financial cost of that crash, if one occurs.
+
+Accurate predictions of both components are essential for pricing policies, managing risk, and ensuring the financial stability of the insurer. From a modeling perspective, this naturally leads to a two-part predictive task: a binary classification problem (crash vs. no crash) and a continuous regression problem (claim cost conditional on a crash).
+
+To address these questions, we apply supervised machine learning techniques—specifically binary logistic regression to model crash probability, and multiple linear regression to estimate crash cost. Both modeling approaches are appropriate given the structured, tabular nature of the data and the interpretability requirements common in insurance analytics.
+
+The provided training data consist of 8,161 observations and 26 variables, including demographic characteristics, vehicle attributes, prior claims history, driving record, and socioeconomic indicators. The evaluation dataset includes an additional 2,141 records for which model predictions must be generated.
+
+### Methods
+
+This study follows a structured end-to-end modeling workflow typical in actuarial data mining:
+
+1.  **Data Exploration**\
+    We begin by reviewing the distributions, central tendencies, correlations, and missingness patterns across all predictors. This step provides intuition into variable behavior and informs subsequent transformations.
+
+2.  **Data Preparation**\
+    Several variables contain missing values (e.g., income, home value, years on job). We address missingness using median imputation for numeric variables and create missing-indicator flags where appropriate. Skewed variables such as vehicle value and prior claim amounts undergo log-transformations to stabilize variance. Categorical predictors are encoded as factors.
+
+3.  **Model Development**
+
+    -   ***Binary Logistic Regression:***\
+        Multiple logistic regression models are trained to predict `TARGET_FLAG`, the indicator for whether a driver experienced a crash. Different variable subsets and transformations are explored, including stepwise selection.
+    -   ***Multiple Linear Regression:***\
+        For records where a crash occurred, linear regression models are fitted to `TARGET_AMT`, the associated claim cost. Alternative specifications are compared based on goodness-of-fit, interpretability, and model diagnostics.\
+
+4.  **Model Evaluation and Selection**\
+    We evaluate logistic models using accuracy, precision, sensitivity, specificity, F1-score, and AUC. Linear regression models are assessed using R², adjusted R², RMSE, F-statistics, and residual diagnostics. Cross-validation is used to mitigate overfitting and ensure model generalizability.
+
+5.  **Prediction on Evaluation Data**\
+    Once the final models are selected, we generate predictions for the evaluation dataset, including:\
+
+    -   Crash probability-Crash classification (threshold = 0.5)
+    -   Expected claim cost
+
+Together, these results provide a data-driven assessment of driver risk and expected financial exposure for the insurer.
+
+## Data exploration
+
+```{r skim , include=FALSE, echo=FALSE}
+dim(train)
+dim(eval)
+
+```
+
+```{r missing, include=TRUE, echo=FALSE}
+# --- Missing summary function ---
+missing_summary <- function(df) {
+  data.frame(
+    variable = names(df),
+    n_missing = sapply(df, function(x) sum(is.na(x))),
+    pct_missing = round(sapply(df, function(x) mean(is.na(x)) * 100), 2)
+  ) %>%
+    arrange(desc(n_missing))
+}
+
+
+```
+
+```{r missing2, include=TRUE}
+train_missing_rows <- train %>% 
+  filter(if_any(everything(), is.na))
+
+train_missing_rows
+
+```
+
+```{r numcols, include=FALSE, echo=FALSE}
+numeric_cols <- c(
+  "INCOME", "HOME_VAL", "BLUEBOOK", "TRAVTIME", "TARGET_AMT",
+  "AGE", "YOJ", "TIF", "OLDCLAIM", "CLAIM_FREQ", "CLM_FREQ",
+  "MVR_PTS", "CAR_AGE", "KIDSDRIV"
+)
+
+
+```
+
+```{r cols, include=FALSE, echo=FALSE}
+clean_numeric <- function(x) {
+  x <- gsub(",", "", x)               # remove commas
+  x <- gsub("\\$", "", x)             # remove dollar signs
+  x <- trimws(x)                      # trim whitespace
+  x[x %in% c("", " ", "NA", "na", "NONE", "None")] <- NA
+  as.numeric(x)
+}
+
+# TRAIN
+for (col in numeric_cols) {
+  if (col %in% names(train)) {
+    train[[col]] <- clean_numeric(train[[col]])
+  }
+}
+
+# EVAL
+for (col in numeric_cols) {
+  if (col %in% names(eval)) {
+    eval[[col]] <- clean_numeric(eval[[col]])
+  }
+}
+
+```
+
+```{r}
+skim(train)
+```
+
+```{r}
+skim(eval)
+```
+
+```{r chars, include=FALSE, echo=FALSE}
+#removingz_ from lables
+non_numeric_cols <- names(train)[!sapply(train, is.numeric)]
+strip_z_prefix <- function(x) {
+  x <- as.character(x)
+  x <- gsub("^z_", "", x)   # remove "z_" ONLY at start
+  x
+}
+non_numeric_cols <- names(train)[!sapply(train, is.numeric)]
+
+for (col in non_numeric_cols) {
+  train[[col]] <- strip_z_prefix(train[[col]])
+  train[[col]] <- factor(train[[col]])   # re-factor after cleaning
+}
+non_numeric_cols_eval <- names(eval)[!sapply(eval, is.numeric)]
+
+for (col in non_numeric_cols_eval) {
+  eval[[col]] <- strip_z_prefix(eval[[col]])
+  eval[[col]] <- factor(eval[[col]], levels = levels(train[[col]]))
+}
+
+non_numeric_cols
+for (v in non_numeric_cols) {
+  cat("\n===== Level Counts for:", v, "=====\n")
+  print(table(train[[v]], useNA = "ifany"))
+}
+
+```
+
+```{r nvars, include=TRUE, echo=FALSE}
+num_vars <- names(train)[sapply(train, is.numeric)]
+num_vars
+train %>%
+  dplyr::select(all_of(num_vars)) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  facet_wrap(~ variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Distributions of All Numeric Variables")
+```
+
+## Data manipulation
+
+### Missing Data
+
+-   Job- could be missing for any number of reason, but we will keep this under a new label " unspecified", 526 cases in train
+
+-   Car age- this is peculiar since car model years is a primary data point for insurance, could it be that these are really new cars, or really old cars, 510 cases in train
+
+-   Age - Small number of cases - 6 cases in train. We can do a mean impute here
+
+-   Home Value- This could represent that the person does not own a home which would be 0,464 cases
+
+-   YOJ - years on job lets see if this connected to people whom do have a job specified, 454 case.
+
+-   Income - Income if there is no job listed could make sense to have zero. 445 cases in train.
+
+```{r unspecifed, include=FALSE, echo=FALSE}
+# TRAIN
+train$JOB <- as.character(train$JOB)         # ensure editable
+train$JOB[is.na(train$JOB)] <- "Unspecified"
+train$JOB <- factor(train$JOB)               # convert back to factor
+
+# EVAL
+eval$JOB <- as.character(eval$JOB)
+eval$JOB[is.na(eval$JOB)] <- "Unspecified"
+eval$JOB <- factor(eval$JOB, levels = levels(train$JOB))
+
+```
+
+```{r, include=FALSE, echo=FALSE}
+train %>% 
+  filter(JOB == "Unspecified" & is.na(YOJ)) %>% 
+  nrow()
+
+```
+
+```{r,include=FALSE, echo=FALSE}
+train %>% 
+  filter(JOB == "Unspecified" & is.na(INCOME) ) %>% 
+  nrow()
+train %>% 
+  filter(JOB == "Unspecified" )
+
+```
+
+```{r imputing home_val, include=FALSE, echo=FALSE}
+train$HOME_VAL <- ifelse(is.na(train$HOME_VAL), 0, train$HOME_VAL)
+
+eval$HOME_VAL <- ifelse(is.na(eval$HOME_VAL), 0, eval$HOME_VAL)
+
+```
+
+```{r self , include=FALSE, echo=FALSE}
+train$JOB <- as.character(train$JOB)
+
+train$JOB[train$JOB == "Unspecified" & train$CAR_USE == "Commercial"] <- "SelfEmployed"
+
+train$JOB <- factor(train$JOB)   # re-factor after modification
+
+eval$JOB <- as.character(eval$JOB)
+
+eval$JOB[eval$JOB == "Unspecified" & eval$CAR_USE == "Commercial"] <- "SelfEmployed"
+
+# match factor levels to train
+eval$JOB <- factor(eval$JOB, levels = levels(train$JOB))
+
+```
+
+```{r medianImpute, include=FALSE, echo=FALSE}
+median_commercial_income <- median(
+  train$INCOME[train$CAR_USE == "Commercial" & !is.na(train$INCOME)]
+)
+
+median_private_income <- median(
+  train$INCOME[train$CAR_USE == "Private" & !is.na(train$INCOME)]
+)
+
+median_commercial_income
+median_private_income
+
+```
+
+```{r imputeIncome , include=FALSE, echo=FALSE}
+# For SelfEmployed + Commercial-use
+train$INCOME <- ifelse(
+  train$JOB == "SelfEmployed" & train$CAR_USE == "Commercial" & is.na(train$INCOME),
+  median_commercial_income,
+  train$INCOME
+)
+
+# For SelfEmployed + Private-use
+train$INCOME <- ifelse(
+  train$JOB == "SelfEmployed" & train$CAR_USE == "Private" & is.na(train$INCOME),
+  median_private_income,
+  train$INCOME
+)
+# SelfEmployed + Commercial-use
+eval$INCOME <- ifelse(
+  eval$JOB == "SelfEmployed" & eval$CAR_USE == "Commercial" & is.na(eval$INCOME),
+  median_commercial_income,
+  eval$INCOME
+)
+
+# SelfEmployed + Private-use
+eval$INCOME <- ifelse(
+  eval$JOB == "SelfEmployed" & eval$CAR_USE == "Private" & is.na(eval$INCOME),
+  median_private_income,
+  eval$INCOME
+)
+
+
+```
+
+During data preparation, I observed that many individuals with missing income also had commercial-use vehicles and job category recoded as “SelfEmployed.”\
+
+Because self-employed drivers with commercial auto policies likely report income similarly, I imputed their missing `INCOME` values using the median income of all commercial-use customers:
+
+```         
+57892
+```
+
+\
+
+This preserves domain logic and stabilizes the logistic regression model.
+
+We also imputed missing income for private use cases with the median of cases labeled private :
+
+```         
+51110
+```
+
+skim(train)
+
+```         
+```
+
+```{r yojImpute, include=FALSE, echo=FALSE}
+# TRAIN
+train$YOJ <- ifelse(is.na(train$YOJ), 0, train$YOJ)
+
+# EVAL
+eval$YOJ <- ifelse(is.na(eval$YOJ), 0, eval$YOJ)
+
+
+```
+
+```{r incomeImpuete,include=FALSE, echo=FALSE}
+
+median_commercial_income <- median(
+  train$INCOME[train$CAR_USE == "Commercial" & !is.na(train$INCOME)]
+)
+
+median_private_income <- median(
+  train$INCOME[train$CAR_USE == "Private" & !is.na(train$INCOME)]
+)
+
+# median_commercial_income
+# median_private_income
+# Commercial drivers
+train$INCOME <- ifelse(
+  train$CAR_USE == "Commercial" & is.na(train$INCOME),
+  median_commercial_income,
+  train$INCOME
+)
+
+# Private drivers
+train$INCOME <- ifelse(
+  train$CAR_USE == "Private" & is.na(train$INCOME),
+  median_private_income,
+  train$INCOME
+)
+# Commercial drivers
+train$INCOME <- ifelse(
+  train$CAR_USE == "Commercial" & is.na(train$INCOME),
+  median_commercial_income,
+  train$INCOME
+)
+
+# Private drivers
+train$INCOME <- ifelse(
+  train$CAR_USE == "Private" & is.na(train$INCOME),
+  median_private_income,
+  train$INCOME
+)
+# Commercial drivers
+eval$INCOME <- ifelse(
+  eval$CAR_USE == "Commercial" & is.na(eval$INCOME),
+  median_commercial_income,
+  eval$INCOME
+)
+
+# Private drivers
+eval$INCOME <- ifelse(
+  eval$CAR_USE == "Private" & is.na(eval$INCOME),
+  median_private_income,
+  eval$INCOME
+)
+
+```
+
+```{r ageRemove, include=FALSE, echo=FALSE}
+eval <- eval %>% filter(!is.na(AGE))
+train <- train %>% filter(!is.na(AGE))
+
+```
+
+```{r carAgeimpute,include=FALSE, echo=FALSE}
+train$CAR_AGE <- ifelse(train$CAR_AGE < 0, 0, train$CAR_AGE)
+eval$CAR_AGE <- ifelse(eval$CAR_AGE < 0, 0, eval$CAR_AGE)
+mean_car_age <- mean(train$CAR_AGE, na.rm = TRUE)
+mean_car_age
+eval$CAR_AGE <- ifelse(is.na(eval$CAR_AGE), mean_car_age, eval$CAR_AGE)
+train$CAR_AGE <- ifelse(is.na(train$CAR_AGE), mean_car_age, train$CAR_AGE)
+
+
+
+```
+
+Missing values were addressed using domain-appropriate logic.\
+
+Income was imputed using median values segmented by vehicle use (commercial vs. private) and adjusted for self-employed individuals. Home values were imputed to zero, YOJ was imputed to zero due to its distribution and realistic interpretation, and CAR_AGE was cleaned by setting negative values to zero and imputing the remaining values using the mean. Job missingness was recoded to “Unspecified,” and records with commercial vehicle use and unspecified job type were reassigned to “SelfEmployed.” All categorical variables were cleaned by removing “z\_” prefixes and refactoring levels. Rows missing AGE were removed. After transformation, the dataset contains no problematic missingness and is suitable for modeling.
+
+```{r numvar,include=FALSE, echo=FALSE}
+num_vars <- names(train)[sapply(train, is.numeric)]
+num_vars
+train %>%
+  dplyr::select(all_of(num_vars)) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  facet_wrap(~ variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Distributions of All Numeric Variables")
+```
+
+```{r correlation,include=TRUE , echo=FALSE }
+cor_matrix <- cor(train[num_vars], use = "pairwise.complete.obs")
+
+corrplot::corrplot(cor_matrix, method = "color", type = "lower")
+
+```
+
+The correlation matrix revealed several meaningful relationships between numeric predictors and the likelihood of being involved in an accident (`TARGET_FLAG`). Variables related to household composition showed notable correlations: having children (`HOMEKIDS`) and especially having children of driving age (`KIDSDRIV`) were positively associated with crash risk. Behavioral and driving-history measures were also strong indicators. Prior claims history (`OLDCLAIM`), claim frequency (`CLM_FREQ`), and accumulated motor vehicle record points (`MVR_PTS`) all demonstrated positive correlations with accident involvement, consistent with actuarial expectations that past behavior is predictive of future risk. Additionally, longer commute distances (`TRAVTIME`) exhibited a mild but meaningful correlation with higher crash probability, reflecting increased road exposure. Overall, the correlation structure supports the inclusion of these variables in the logistic regression model, both for predictive strength and domain relevance.
+
+```{r categorical_correlations , include=FALSE, echo=FALSE}
+cat_vars <- names(train)[sapply(train, is.factor)]
+cat_vars
+
+for (v in cat_vars) {
+  cat("\n======================================\n")
+  cat("Crash Rate by:", v, "\n")
+  cat("======================================\n")
+  
+  print(
+    train %>%
+      group_by(.data[[v]]) %>%
+      summarise(
+        count = n(),
+        crash_rate = mean(TARGET_FLAG),
+        crashes = sum(TARGET_FLAG),
+        no_crash = sum(TARGET_FLAG == 0)
+      ) %>%
+      arrange(desc(crash_rate))
+  )
+}
+
+
+```
+
+```{r target_flag, include=TRUE, echo=FALSE}
+ggplot(train, aes(x = factor(TARGET_FLAG))) +
+  geom_bar() +
+      labs(
+        title = paste("Target Flag " ),
+        
+        y = "count",
+        fill = "Target"
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+
+```
+
+```{r barTarget, include=TRUE, echo=FALSE}
+for (v in cat_vars) {
+  print(
+    ggplot(train, aes(x = .data[[v]], fill = factor(TARGET_FLAG))) +
+      geom_bar(position = "fill") +
+      labs(
+        title = paste("Crash Proportion by", v),
+        x = v,
+        y = "Proportion",
+        fill = "Target"
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  )
+}
+
+```
+
+```{r traget_amount, include=TRUE, echo=FALSE}
+
+ggplot(
+  train %>% filter(TARGET_FLAG == 1),
+  aes(x = (TARGET_AMT))
+) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Claim Amounts (TARGET_AMT) for Accident Cases",
+    x = "Claim Amount (TARGET_AMT)",
+    y = "Count"
+  )
+ggplot(
+  train %>% filter(TARGET_FLAG == 1),
+  aes(x = log10(TARGET_AMT))
+) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Claim Amounts log10(TARGET_AMT) for Accident Cases",
+    x = "Claim Amount (TARGET_AMT)",
+    y = "Count"
+  )
+```
+
+The dataset exhibits a clear class imbalance: only about one in four policyholders experienced an accident, meaning roughly **25% of observations have `TARGET_FLAG = 1`**, while the remaining **75% did not**. This imbalance is important because it can influence classification model performance, particularly accuracy, and should be considered when evaluating logistic regression results.
+
+## Modeling
+
+###  Logistic models
+
+```{r modeling1, include=FALSE, echo=FALSE}
+y_flag <- train$TARGET_FLAG
+y_amt  <- train$TARGET_AMT
+
+train_x <- train %>% dplyr::select(-TARGET_FLAG, -TARGET_AMT)
+eval_x  <- eval  %>% dplyr::select(-TARGET_FLAG, -TARGET_AMT)
+
+train_mm <- model.matrix(~ ., data = train_x)
+train_mm <- train_mm[, -1]   # remove intercept
+
+eval_mm_raw <- model.matrix(~ ., data = eval_x)
+eval_mm_raw <- eval_mm_raw[, -1]   # remove intercept
+
+missing_cols <- setdiff(colnames(train_mm), colnames(eval_mm_raw))
+
+for (col in missing_cols) {
+  eval_mm_raw[, col] <- 0
+}
+eval_mm <- eval_mm_raw[, colnames(train_mm)]
+
+```
+
+To prepare for modeling we encoded categorical values
+
+```{r col_check, include=TRUE, echo=FALSE}
+print("Dimensions")
+print("train:")
+dim(train_mm)
+print("eval:")
+dim(eval_mm)
+
+```
+
+```{r cols_check_true, include=TRUE,echo=FALSE}
+all(colnames(train_mm) == colnames(eval_mm))
+print("All collumn names are excact in the train and eval sets.")
+print("checking for NAs")
+sum(is.na(train_mm))
+sum(is.na(eval_mm))
+print("No missing values")
+```
+
+```{r cv10,include=FALSE, include=FALSE, echo=FALSE}
+
+set.seed(1245) #reproducibilty
+train_df <- as.data.frame(train_mm)
+train_df$TARGET_FLAG <- as.factor(y_flag)
+
+#control
+ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,   # for AUC
+  savePredictions = TRUE
+)
+
+train_df$TARGET_FLAG <- relevel(train_df$TARGET_FLAG, ref = "1")
+
+```
+
+```{r res,include=FALSE, echo=FALSE, cache=TRUE}
+train_df$TARGET_FLAG <- factor(train_df$TARGET_FLAG,
+                               levels = c(0,1),
+                               labels = c("No","Yes"))
+
+results <- list()
+#logistic model full
+
+cv_logistic_full <- train(
+  TARGET_FLAG ~ .,
+  data = train_df,
+  method = "glm",
+  family = "binomial",
+  trControl = ctrl,
+  metric = "ROC"
+)
+cv_naive_bayes <- train(
+  TARGET_FLAG ~ .,
+  data = train_df,
+  method = "naive_bayes",
+  trControl = ctrl,
+  metric = "ROC"
+)
+cv_random_forest <- train(
+  TARGET_FLAG ~ .,
+  data = train_df,
+  method = "rf",
+  trControl = ctrl,
+  metric = "ROC"
+)
+cv_xgboost <- train(
+  TARGET_FLAG ~ .,
+  data = train_df,
+  method = "xgbTree",
+  trControl = ctrl,
+  metric = "ROC"
+)
+
+```
+
+```{r metrics, include=TRUE}
+performance <- data.frame(
+  Model = c("Logistic Regression", "Naive Bayes", "Random Forest", "XGBoost"),
+  AUC = c(
+    max(cv_logistic_full$results$ROC),
+    max(cv_naive_bayes$results$ROC),
+    max(cv_random_forest$results$ROC),
+    max(cv_xgboost$results$ROC)
+  ),
+  Sensitivity = c(
+    cv_logistic_full$results$Sens[which.max(cv_logistic_full$results$ROC)],
+    cv_naive_bayes$results$Sens[which.max(cv_naive_bayes$results$ROC)],
+    cv_random_forest$results$Sens[which.max(cv_random_forest$results$ROC)],
+    cv_xgboost$results$Sens[which.max(cv_xgboost$results$ROC)]
+  ),
+  Specificity = c(
+    cv_logistic_full$results$Spec[which.max(cv_logistic_full$results$ROC)],
+    cv_naive_bayes$results$Spec[which.max(cv_naive_bayes$results$ROC)],
+    cv_random_forest$results$Spec[which.max(cv_random_forest$results$ROC)],
+    cv_xgboost$results$Spec[which.max(cv_xgboost$results$ROC)]
+  )
+)
+
+performance
+
+```
+
+```{r model_matrices, include=FALSE, echo=FALSE}
+# ===============================================================
+# CONFUSION MATRICES FOR ALL 4 MODELS (USING 10-FOLD CV PREDICTIONS)
+# ===============================================================
+
+# LOGISTIC REGRESSION
+cm_logistic <- confusionMatrix(
+  data = factor(cv_logistic_full$pred$pred, levels = c("No", "Yes")),
+  reference = factor(cv_logistic_full$pred$obs, levels = c("No", "Yes")),
+                     positive = "Yes")
+
+
+# NAIVE BAYES
+cm_naive <- confusionMatrix(
+  data = factor(cv_naive_bayes$pred$pred, levels = c("No", "Yes")),
+  reference = factor(cv_naive_bayes$pred$obs, levels = c("No", "Yes")), positive = "Yes")
+
+
+# RANDOM FOREST
+cm_rf <- confusionMatrix(
+  data = factor(cv_random_forest$pred$pred, levels = c("No", "Yes")),
+  reference = factor(cv_random_forest$pred$obs, levels = c("No", "Yes")),
+                     positive = "Yes")
+
+
+# XGBOOST
+cm_xgb <- confusionMatrix(
+  data = factor(cv_xgboost$pred$pred, levels = c("No", "Yes")),
+  reference = factor(cv_xgboost$pred$obs, levels = c("No", "Yes")),
+                     positive = "Yes")
+
+
+
+
+```
+
+#### Confusion Matrices for target flag
+
+::: panel-tabset
+#### Full Logistic Linear Model
+
+```{r}
+cm_logistic
+```
+
+```{r}
+summary(cv_logistic_full)
+```
+
+#### Naive Bayes Model
+
+```{r}
+cm_naive
+```
+
+#### Random Forrest Model
+
+```{r}
+cm_rf
+```
+
+#### XG-Boost Tree Model
+
+```{r}
+cm_xgb
+```
+:::
+
+| Model | Sensitivity (TPR) | Specificity (TNR) | Accuracy | Balanced Accuracy |
+|----|----|----|----|----|
+| **Logistic Regression** | **0.417** | **0.922** | 0.789 | **0.669** |
+| **Naive Bayes** | 0.322 | 0.879 | 0.733 | 0.601 |
+| **Random Forest** | 0.311 | **0.946** | 0.779 | 0.628 |
+| **XGBoost** | 0.414 | 0.919 | 0.786 | **0.667** |
+
+The logistic regression model performs very well with the encoded variables, slightly outperforming all other tested models. In addition to its strong predictive accuracy, it has the advantage of being easily interpretable, as the direction and magnitude of each coefficient provide direct insights into how the predictors influence crash likelihood.
+
+### Linear Regression for Target_Amt
+
+Because `TARGET_AMT` represents the dollar amount of a crash **only when a crash actually occurs**, the severity model must be trained exclusively on policyholders who experienced an accident (`TARGET_FLAG = 1`). This results in a much smaller and more concentrated training subset. All non-crash records have a `TARGET_AMT` of zero by definition and therefore should not be included when fitting the linear regression models, as they would distort the relationship between the predictors and true claim severity.
+
+```{r, include=FALSE, echo=FALSE}
+
+library(MASS)
+library(caret)
+# Restore TARGET_AMT into train_df using INDEX
+train_df$TARGET_AMT <- train_df_original$TARGET_AMT[ match(train_df$INDEX, train_df_original$INDEX) ]
+
+# Crash-only rows
+severity_df <- train_df[train_df$TARGET_FLAG == "Yes", ]
+str(severity_df)
+
+
+# Remove zero-variance predictors
+nzv <- nearZeroVar(severity_df)
+(nzv)
+if (length(nzv) > 0) severity_df <- severity_df[, -nzv]
+
+# Remove constant columns BUT NEVER DROP TARGET_AMT
+uc <- sapply(severity_df, function(x) length(unique(x)))
+
+# keep columns where:
+#   - unique values > 1
+#   - OR the column IS TARGET_AMT
+keep_cols <- names(uc)[uc > 1 | names(uc) == "TARGET_AMT"]
+
+str(severity_df)
+severity_df <- severity_df[, keep_cols, drop = FALSE]
+
+# Remove missing values
+severity_df <- severity_df[complete.cases(severity_df), ]
+
+# -----------------------------------------
+# 1. Box–Cox transform TARGET_AMT
+# -----------------------------------------
+bc <- boxcox(TARGET_AMT ~ ., data = severity_df, plotit = FALSE)
+lambda <- bc$x[which.max(bc$y)]
+
+if (abs(lambda) < 1e-6) {
+  severity_df$bc_amt <- log(severity_df$TARGET_AMT + 1)
+} else {
+  severity_df$bc_amt <- ((severity_df$TARGET_AMT + 1)^lambda - 1) / lambda
+}
+
+lm_bc <- lm(bc_amt ~ . - TARGET_AMT, data = severity_df)
+
+
+
+```
+
+```{r summaryLmbc, include=TRUE, echo=FALSE}
+summary(lm_bc)
+```
+
+```{r summary_invalidlm, include=TRUE,echo=FALSE}
+severity_all <- train_df   # use entire dataset
+nzv_cols <- nearZeroVar(severity_all)
+if (length(nzv_cols) > 0) {
+  severity_all <- severity_all[, -nzv_cols]
+}
+
+uc <- sapply(severity_all, function(x) length(unique(x)))
+severity_all <- severity_all[, uc > 1]
+lm_all <- lm(TARGET_AMT ~ ., data = severity_all)
+summary(lm_all)
+
+```
+
+Because `TARGET_AMT` is only defined for policyholders who were involved in a crash, the severity model was fit exclusively on crash records. Several peers reported higher R² values by fitting a regression model to the entire dataset, where approximately 75% of records have `TARGET_AMT = 0`. While this approach inflates model performance\_ since predicting zero is trivial it mixes frequency and severity and does not reflect proper actuarial modeling practices. The correct approach is a two-part model: a logistic regression to predict crash occurrence (frequency) and a conditional severity model estimated only on accident cases. As a result, the R² of the severity model is lower, which is expected given the inherent variability of claim costs and the limited predictors available.
+
+Furthermore, predicting the dollar cost of a crash is inherently difficult using this dataset, as actual severity is influenced by unobserved factors such as injury level, property damage, speed of impact, environmental conditions, and accident type. None of which are captured in the data. To illustrate this point, I also trained a Box–Cox transformed regression model on the *entire* training set and obtained a much higher R² of approximately 0.29. However, this improvement is misleading: the model achieves a high R² only because it learns to predict values close to zero, which dominate the dataset. In other words, the model appears more accurate simply because most policyholders did not file a claim, not because it is better at predicting true claim severity.
+
+Given these findings, I cannot recommend a linear regression model for predicting `TARGET_AMT` in its current form. The limited feature set and the absence of key crash-severity variables make it difficult for any linear model, whether untransformed, log-transformed, or Box–Cox transformed to capture meaningful variance in claim cost. As a result, the severity predictions lack the accuracy required for practical insurance pricing or risk assessment.
+
+::: panel-tabset
+#### Box_Cox Full model ONLY data that has been flagged as a crash before
+
+```{r ris1, include=TRUE, echo=FALSE}
+# Residual diagnostic plots for lm_full
+par(mfrow = c(2, 2))
+plot(lm_bc)   
+par(mfrow = c(1, 1))
+```
+
+#### Box_Cox on all Data
+
+```{r ris2, include=TRUE,echo=FALSE}
+# Residual diagnostic plots for lm_full
+par(mfrow = c(2, 2))
+plot(lm_all)   
+par(mfrow = c(1, 1))
+```
+:::
+
+If we examine the Q–Q plot for the model trained on the *entire* dataset, we immediately see why this model is invalid. The upper tail of the plot sharply deviates upward after approximately the second theoretical quantile. This spike corresponds to all observations with non-zero claim amounts—i.e., the policyholders who actually experienced a crash. Because 75% of the data consists of zeros, the model is essentially trying to fit two fundamentally different distributions simultaneously: a large mass at zero and a long, continuous right tail for crash costs. The resulting Q–Q pattern shows that the linear model cannot capture this mixture distribution, confirming that a full-dataset severity model is statistically mis-specified and inappropriate for predicting `TARGET_AMT`.
+
+## Model Selected
+
+Based on the modeling results, I recommend using the logistic regression model fitted with the `glm()` function as the final model for predicting crash occurrence (`TARGET_FLAG`). This model demonstrated strong overall performance, competitive AUC, and clear interpretability, making it the most suitable choice for estimating accident likelihood.
+
+However, I will not provide predictions for `TARGET_AMT` in the evaluation set. Despite extensive testing—including untransformed, log-transformed, and Box–Cox transformed linear models—I was unable to identify a severity model with sufficient explanatory power or reliable residual behavior. The available predictors do not capture key determinants of claim cost (such as injury severity, collision type, repair estimates, or environmental factors), resulting in weak or unstable models. Therefore, no regression model tested offered a robust or valid explanation of variance in crash amounts.
+
+```{r model_rec, include=TRUE, echo=FALSE}
+summary(cv_logistic_full)
+
+```
+
+```{r cm_modelrec, include=TRUE, echo=FALSE}
+cm_logistic
+```
+
+## Predictions
+
+```{r include=TRUE, echo=FALSE}
+# 1. Predict probability of crash
+eval_pred_prob <- predict(cv_logistic_full,
+                          newdata = as.data.frame(eval_mm),
+                          type = "prob")[, "Yes"]   # extract prob of Yes class
+
+# 2. Classify using 0.5 threshold
+eval_pred_flag <- ifelse(eval_pred_prob >= 0.5, "Yes", "No")
+
+# 3. Create full prediction table
+eval_predictions <- data.frame(
+  TARGET_FLAG = eval_pred_flag,
+  PROBABILITY = eval_pred_prob
+)
+
+# 4. Filter only predicted Yes cases
+eval_predictions_yes <- eval_predictions[eval_predictions$TARGET_FLAG == "Yes", ]
+
+# Review
+
+
+print(eval_predictions_yes)
+```
+
+```{r, include=FALSE, echo=FALSE}
+print(eval_predictions)
+```
+
+```{r include=FALSE, echo=FALSE}
+write.csv(eval_predictions, "eval_predictions.csv", row.names = FALSE)
+
+```

@@ -1,0 +1,343 @@
+---
+title: "Moneyball Regression: Predicting Baseball Wins"
+author: "Darwhin Gomez"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+editor: visual
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(GGally)
+library(broom)
+library(caret)
+library(MASS)
+library(psych)
+library(skimr)
+library(dplyr)
+```
+
+## Moneyball Predictions
+
+Overview In this homework assignment, you will explore, analyze and model a data set containing approximately 2200 records. Each record represents a professional baseball team from the years 1871 to 2006 inclusive. Each record has the performance of the team for the given year, with all of the statistics adjusted to match the performance of a 162 game season.
+
+Your objective is to build a multiple linear regression model on the training data to predict the number of wins for the team. You can only use the variables given to you (or variables that you derive from the variables provided).
+
+## Data
+
+```{r import, include=TRUE}
+train <- read_csv("/data621/moneyball-training-data.csv") %>% clean_names()
+test <- read_csv("/data621/moneyball-evaluation-data.csv") %>% clean_names()
+
+```
+
+## EDA
+
+The Data has been imported lets check dimensions and missingness.\
+
+```{r eda_dims}
+cat("Dimensions\n")
+cat("===========\n")
+
+cat(paste("Training:", paste(dim(train), collapse = " x "), "\n"))
+cat(paste("Test:", paste(dim(test), collapse = " x "), "\n"))
+
+train_test_ratio <- round(dim(test)[1] / dim(train)[1], 4)
+cat(paste("Ratio of test to train data:", train_test_ratio, "\n"))
+
+
+```
+
+```{r sum_stats, width = 90}
+my_skim <- skim_with(
+ numeric = sfl(median,p0 =NULL, p25 = NULL,p50 = NULL, p75 = NULL, p100= NULL, ),append = TRUE)
+
+# Now run skim
+my_skim(train)|>
+  arrange((complete_rate))
+```
+
+There are some missing values that should be addressed. I will proceed by removing the team_batting_HBP as there is very little data available, I will then use median imputation for the remaining missing values in the data set. As a reminder we must also do this to our test set for accurate modeling.
+
+```{r zero}
+train %>%
+  dplyr::select(where(is.numeric)) %>%
+  summarise(across(
+    everything(),
+    list(
+      zeros = ~sum(. == 0, na.rm = TRUE)
+      
+    )
+  ))
+```
+
+We also notice some columns with 0's since there is little chance that a team can go a whole season with put allowing a home run or giving up a hit we will assume these are data entry/capture errors and include them in our imputation implementation.
+
+## Missing Data
+
+```{r drophbp}
+train <- train %>% dplyr::select(-team_batting_hbp,-index)
+test  <- test  %>% dplyr::select(-team_batting_hbp)
+print("train cols")
+colnames(train)
+print("test cols")
+colnames(test)
+
+```
+
+We see our columns match except for target wins, our target variable, lets also impute any 0 values predictors and remove the row with now traget_wins, lets impute.
+
+```{r imputation}
+impute_nonpositive_with_median <- function(df) {
+  df %>%
+    mutate(across(
+      where(is.numeric),
+      ~ {
+        med <- median(.[. > 0], na.rm = TRUE)
+        # fallback median if no positives
+        if (is.na(med)) med <- median(., na.rm = TRUE)
+        ifelse(. <= 0 | is.na(.), med, .)
+      }
+    ))
+}
+
+train <- impute_nonpositive_with_median(train)
+test  <- impute_nonpositive_with_median(test)
+
+```
+
+```{r blpred}
+vars <- train |> dplyr::select(where(is.numeric)) %>% dplyr::select(-target_wins)
+
+for (col in names(vars)) {
+  print(
+    ggplot(train, aes_string(x = col, y = "target_wins")) +
+      geom_point(alpha = 0.5) +
+      geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 1) +
+       geom_smooth(method = "loess", se = FALSE, color = "blue", linewidth = 1) +
+      labs(title = paste("Linearity check:", col))
+  )
+}
+
+
+```
+
+\
+
+```{r}
+library(car)
+model <- lm(target_wins ~ ., data = train)
+par(mfrow = c(2, 3))
+crPlots(model)
+
+```
+
+## Pre Process
+
+To satisfy the linearity requirement of linear regression we will implement a box cox transformation to the training and testing set before modeling.
+
+```{r boxcox}
+
+# Apply Box-Cox transformation, centering, and scaling
+train_df <- as.data.frame(train)
+test_df  <- as.data.frame(test)
+
+train_x <- train_df[, setdiff(names(train_df), "target_wins")]
+test_x  <- test_df  # test should have same predictors only
+
+# --- Preprocess predictors only ---
+preproc <- preProcess(train_x, method = c("BoxCox", "center", "scale"))
+
+# --- Apply transformations ---
+train_trans <- predict(preproc, train_x)
+test_trans  <- predict(preproc, test_x)
+
+
+
+
+
+
+```
+
+Lets take a look at the component and residual plots to determine if the linearity assumption is met.
+
+```{r model}
+train_trans$target_wins <- train$target_wins
+model <- lm(target_wins ~ ., data = train_trans)
+par(mfrow = c(2, 3))
+crPlots(model)
+```
+
+## Models
+
+Now that we have transformed our data we can choose and train some models and then make some predictions.\
+Lets begin with the kitchen sink:\
+**Target_Wins \~ .(All the predictors)**
+
+```{r}
+summary(model)
+```
+
+The first model shows some very important predictors in `team_batting_h (hits), team_batting_3b (tripples), team_batting_bb (walks), team_batting_so (strike outs)[negative impact on wins], team_batting_hr (home runs) , team_picthing_hr (home runs given up)[negative impact], team_pitching_so (strike outs), team_fielding_e (defensive errors) [negative impact on wins], team_pitching_bb (walks given up)[negative impact on wins]`, `team_fielding_dp (forced double plays ie two outs on one play)` \
+The model has P- value of 2.2e16 indicating that there is a definite relationship between the predictors and the target variable.\
+The $R^2 = 0.30$ indicating that the model is still missing some information to accurately predict wins.
+
+\
+
+```{r residualm}
+plot(model, c(1,2,4))
+```
+
+```{}
+```
+
+```{}
+```
+
+```{r m2}
+model_sig <- lm(target_wins ~
+                  team_batting_h +
+                  team_batting_3b +
+                  team_batting_bb +
+                  team_batting_so +
+                  team_baserun_sb +
+                  team_pitching_bb +
+                  team_pitching_so +
+                  team_fielding_e +
+                  team_fielding_dp,
+                data = train_trans)
+
+summary(model_sig)
+
+```
+
+```{r}
+plot(model_sig,c(1,2,4))
+```
+
+In our second model we remove our non influential predictors, and see a small reduction to $R^2 = .2946$ While now we have only significant predictors we don't see an improvement to $R^2$ . Lets see if we can remove some outliers to help our model.\
+\
+
+```{r outliersIdentify}
+# Compute diagnostic measures
+influence <- influence.measures(model_sig)
+
+# View the summary of flagged observations
+#summary(influence)
+
+# Extract Cook’s Distance
+cooksD <- cooks.distance(model_sig)
+
+# Inspect top outliers
+sort(cooksD, decreasing = TRUE)[1:20]
+
+```
+
+```{r outliersrm}
+
+influential_ids <- c(1342, 1211, 1828, 299, 1210, 862, 1825, 1584,82,1,2137,297,982,1810,53,418,2012,2233,417,409,1385,2232,1820,427,1341,1345,2015,295,2020,859,1191,296,1822,1083,1340)
+train_clean <- train_trans[-influential_ids, ]
+model_clean <- lm(target_wins ~
+                    team_batting_h +
+                    team_batting_3b +
+                    team_batting_bb +
+                    team_batting_so +
+                    team_baserun_sb +
+                    team_pitching_bb +
+                    team_pitching_so +
+                    team_fielding_e +
+                    team_fielding_dp,
+                  data = train_clean)
+
+summary(model_clean)
+```
+
+```{r modelval}
+plot(model_clean,c(1,2,4))
+
+
+```
+
+### Model Refinement and Outlier Removal
+
+Influential points were identified using Cook’s Distance and removed to reduce leverage bias. the criteria was a cooks distance above .015\
+A total of 35 about $35/2276 = 1.53%$ % of observations (e.g., 1342, 1211, 1828, 299, etc.) were excluded from the dataset.
+
+After refitting the model:
+
+-   $R^2$ improved from **0.2946** to **0.3161**
+-   Diagnostic plots confirmed:
+    -   Improved residual homoscedasticity
+    -   Fewer high-leverage outliers
+    -   Similar coefficient directions and magnitudes
+
+These results suggest that the original model was modestly affected by a small set of influential data points.\
+After their removal, the simple linear regression model explains approximately **31.5%** of the variance in team wins, satisfying all OLS assumptions.\
+
+## Predicting
+
+```{r pred}
+predictions <- predict(model_clean, newdata = test_trans)
+head(predictions,20)
+```
+
+Our model is predicting lets apply the ceiling function to our predictions
+
+```{r cieling}
+predictions_ceiling <- ceiling(predictions)
+head(predictions_ceiling,20)
+```
+
+```{r hist}
+# Create histogram and save histogram info
+m <- mean(predictions_ceiling)
+s <- sd(predictions_ceiling)
+
+# Re-plot with labels
+h <- hist(predictions_ceiling,
+          breaks = 20,
+          col = "gray",
+          border = "white",
+          freq = FALSE,
+          main = "Distribution of Predicted Wins",
+          xlab = "Predicted Wins")
+
+# Add the normal curve
+xfit <- seq(min(predictions_ceiling), max(predictions_ceiling), length = 100)
+yfit <- dnorm(xfit, mean = m, sd = s)
+lines(xfit, yfit, col = "red", lwd = 2)
+
+# Add mean and SD text annotation
+text(x = m, y = max(yfit)/2,
+     labels = paste0("Mean = ", round(m, 1), 
+                     "\nSD = ", round(s, 1)),
+     col = "blue", cex = 0.9, pos = 4)
+
+```
+
+We generated predictions using the cleaned linear model after removing 35 influential observations identified by Cook’s Distance values greater than 0.015.\
+A ceiling function was applied to ensure all predicted team win totals were whole numbers.\
+We then visualized the distribution of predicted wins using a histogram with an overlaid normal distribution curve.
+
+The resulting predictions followed an approximately normal (Gaussian) distribution, centered around 80.8 wins—a realistic outcome given that Major League Baseball teams play 162 games per season.\
+An average near 81 wins represents a balanced league, confirming that our model’s predictions align well with real-world expectations.\
+\
+As a baseball fan, I recognize that additional variables could improve the model’s ability to explain team wins.\
+
+Metrics such as **runs scored**, **hits with runners in scoring position**, and **runs allowed** directly capture a team’s offensive efficiency and pitching effectiveness.\
+
+Including these types of performance indicators could enhance the model’s explanatory power and yield a higher $R^2$, providing a more complete representation of what drives success over a 162-game season.
+
+## CSV Predictions
+
+```{r predcsv}
+results <- data.frame(test_trans, Predicted_Wins = predictions_ceiling)
+
+# Write to CSV file
+write.csv(results, "predicted_team_wins.csv", row.names = FALSE)
+```

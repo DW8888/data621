@@ -6,8 +6,9 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="author" content="Darwhin Gomez">
 
-<title>darwhin_gomez_a2_2025</title>
+<title>Classsification and CAret</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -71,21 +72,60 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 </head>
 
-<body class="fullcontent">
+<body>
 
 <div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
-
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#loading-data" id="toc-loading-data" class="nav-link active" data-scroll-target="#loading-data">1- Loading Data</a></li>
+  <li><a href="#table-function" id="toc-table-function" class="nav-link" data-scroll-target="#table-function">2- Table function</a></li>
+  <li><a href="#accuracy-function" id="toc-accuracy-function" class="nav-link" data-scroll-target="#accuracy-function">3- Accuracy function</a></li>
+  <li><a href="#classification-error-rate" id="toc-classification-error-rate" class="nav-link" data-scroll-target="#classification-error-rate">4- Classification Error Rate</a></li>
+  <li><a href="#precision" id="toc-precision" class="nav-link" data-scroll-target="#precision">5- Precision</a></li>
+  <li><a href="#sensitivity-recall" id="toc-sensitivity-recall" class="nav-link" data-scroll-target="#sensitivity-recall">6- Sensitivity (Recall)</a></li>
+  <li><a href="#specificity" id="toc-specificity" class="nav-link" data-scroll-target="#specificity">7- Specificity</a></li>
+  <li><a href="#f1-score" id="toc-f1-score" class="nav-link" data-scroll-target="#f1-score">8- F1 Score</a></li>
+  <li><a href="#roc-curve-function-and-plot" id="toc-roc-curve-function-and-plot" class="nav-link" data-scroll-target="#roc-curve-function-and-plot">10- ROC Curve Function and plot</a></li>
+  <li><a href="#all-metrics-comparison-caret" id="toc-all-metrics-comparison-caret" class="nav-link" data-scroll-target="#all-metrics-comparison-caret">11- All Metrics Comparison Caret</a></li>
+  <li><a href="#proc" id="toc-proc" class="nav-link" data-scroll-target="#proc">12-13 pROC</a></li>
+  </ul>
+</nav>
+</div>
 <main class="content" id="quarto-document-content">
 
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Classsification and CAret</h1>
+</div>
 
 
 
-<hr>
-<hr>
-<p>title: “DATA 621 Assignment 2” author: “Darwhin Gomez” format: html: code-fold: true toc: true pdf: toc: true editor: visual</p>
-<hr>
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Darwhin Gomez </p>
+          </div>
+  </div>
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stderr">
 <pre><code>
 Attaching package: 'dplyr'</code></pre>
@@ -100,14 +140,20 @@ Attaching package: 'dplyr'</code></pre>
 
     intersect, setdiff, setequal, union</code></pre>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(caret)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stderr">
 <pre><code>Loading required package: ggplot2</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
 <pre><code>Loading required package: lattice</code></pre>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(pROC)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stderr">
 <pre><code>Type 'citation("pROC")' for a citation.</code></pre>
 </div>
@@ -120,15 +166,24 @@ Attaching package: 'pROC'</code></pre>
 
     cov, smooth, var</code></pre>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 <section id="loading-data" class="level2">
 <h2 class="anchored" data-anchor-id="loading-data">1- Loading Data</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>data <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="st">"classification-output-data.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(data,<span class="dv">5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>  pregnant glucose diastolic skinfold insulin  bmi pedigree age class
 1        7     124        70       33     215 25.5    0.161  37     0
@@ -149,8 +204,11 @@ Attaching package: 'pROC'</code></pre>
 <section id="table-function" class="level2">
 <h2 class="anchored" data-anchor-id="table-function">2- Table function</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>conf_matrix<span class="ot">&lt;-</span><span class="fu">table</span>(data<span class="sc">$</span>class, data<span class="sc">$</span>scored.class)</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>conf_matrix</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>   
       0   1
@@ -169,6 +227,8 @@ Attaching package: 'pROC'</code></pre>
 <section id="accuracy-function" class="level2">
 <h2 class="anchored" data-anchor-id="accuracy-function">3- Accuracy function</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>acc_func <span class="ot">&lt;-</span> <span class="cf">function</span>(df, actual, predicted){</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  cm <span class="ot">&lt;-</span> <span class="fu">table</span>(df[[actual]], df[[predicted]])</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>  tp <span class="ot">&lt;-</span> cm[<span class="dv">2</span>,<span class="dv">2</span>]</span>
@@ -182,7 +242,9 @@ Attaching package: 'pROC'</code></pre>
 <span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>computed_acc<span class="ot">&lt;-</span> <span class="fu">acc_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>)</span>
-<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated accuracy of the model is:"</span>, <span class="fu">round</span>(<span class="fu">acc_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated accuracy of the model is:"</span>,</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>            <span class="fu">round</span>(<span class="fu">acc_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] "The calculated accuracy of the model is: 0.8066"</code></pre>
 </div>
@@ -191,6 +253,8 @@ Attaching package: 'pROC'</code></pre>
 <section id="classification-error-rate" class="level2">
 <h2 class="anchored" data-anchor-id="classification-error-rate">4- Classification Error Rate</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>error_func <span class="ot">&lt;-</span> <span class="cf">function</span>(df, actual, predicted){</span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  cm <span class="ot">&lt;-</span> <span class="fu">table</span>(df[[actual]], df[[predicted]])</span>
 <span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  tp <span class="ot">&lt;-</span> cm[<span class="dv">2</span>,<span class="dv">2</span>]</span>
@@ -204,7 +268,9 @@ Attaching package: 'pROC'</code></pre>
 <span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>computed_err <span class="ot">&lt;-</span> <span class="fu">error_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>)</span>
-<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated classification error rate of the model is:"</span>, <span class="fu">round</span>(<span class="fu">error_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated classification error rate of the model is:"</span>,</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>            <span class="fu">round</span>(<span class="fu">error_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] "The calculated classification error rate of the model is: 0.1934"</code></pre>
 </div>
@@ -212,7 +278,10 @@ Attaching package: 'pROC'</code></pre>
 <p><br>
 We can verify by adding the accuracy and the error rate which should sum to 1</p>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(computed_acc <span class="sc">+</span> computed_err)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 1</code></pre>
 </div>
@@ -221,13 +290,17 @@ We can verify by adding the accuracy and the error rate which should sum to 1</p
 <section id="precision" class="level2">
 <h2 class="anchored" data-anchor-id="precision">5- Precision</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>precision_func <span class="ot">&lt;-</span> <span class="cf">function</span>(df, actual, predicted) {</span>
 <span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>  cm <span class="ot">&lt;-</span> <span class="fu">table</span>(df[[actual]], df[[predicted]])</span>
 <span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  TP <span class="ot">&lt;-</span> cm[<span class="dv">2</span>,<span class="dv">2</span>]; FP <span class="ot">&lt;-</span> cm[<span class="dv">1</span>,<span class="dv">2</span>]</span>
 <span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  TP <span class="sc">/</span> (TP <span class="sc">+</span> FP)</span>
 <span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a> calculated_prec<span class="ot">&lt;-</span> <span class="fu">precision_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>)</span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a> <span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated precision of the model is:"</span>, <span class="fu">round</span>(<span class="fu">precision_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a> <span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated precision of the model is:"</span>,</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>             <span class="fu">round</span>(<span class="fu">precision_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] "The calculated precision of the model is: 0.8438"</code></pre>
 </div>
@@ -236,13 +309,17 @@ We can verify by adding the accuracy and the error rate which should sum to 1</p
 <section id="sensitivity-recall" class="level2">
 <h2 class="anchored" data-anchor-id="sensitivity-recall">6- Sensitivity (Recall)</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>sensitivity_func <span class="ot">&lt;-</span> <span class="cf">function</span>(df, actual, predicted) {</span>
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  cm <span class="ot">&lt;-</span> <span class="fu">table</span>(df[[actual]], df[[predicted]])</span>
 <span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>  TP <span class="ot">&lt;-</span> cm[<span class="dv">2</span>,<span class="dv">2</span>]; FN <span class="ot">&lt;-</span> cm[<span class="dv">2</span>,<span class="dv">1</span>]</span>
 <span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>  TP <span class="sc">/</span> (TP <span class="sc">+</span> FN)</span>
 <span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>calculated_sensitivity<span class="ot">&lt;-</span><span class="fu">sensitivity_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>)</span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated  Sensiticity (recall rate) of the model is:"</span>, <span class="fu">round</span>(<span class="fu">sensitivity_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated  Sensiticity (recall rate) of the model is:"</span>, </span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>            <span class="fu">round</span>(<span class="fu">sensitivity_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] "The calculated  Sensiticity (recall rate) of the model is: 0.4737"</code></pre>
 </div>
@@ -251,13 +328,17 @@ We can verify by adding the accuracy and the error rate which should sum to 1</p
 <section id="specificity" class="level2">
 <h2 class="anchored" data-anchor-id="specificity">7- Specificity</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>specificity_func <span class="ot">&lt;-</span> <span class="cf">function</span>(df, actual, predicted) {</span>
 <span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>  cm <span class="ot">&lt;-</span> <span class="fu">table</span>(df[[actual]], df[[predicted]])</span>
 <span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>  TN <span class="ot">&lt;-</span> cm[<span class="dv">1</span>,<span class="dv">1</span>]; FP <span class="ot">&lt;-</span> cm[<span class="dv">1</span>,<span class="dv">2</span>]</span>
 <span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>  TN <span class="sc">/</span> (TN <span class="sc">+</span> FP)</span>
 <span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a> calculated_specif<span class="ot">&lt;-</span><span class="fu">specificity_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>)</span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a> <span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated  Specificity of the model is:"</span>, <span class="fu">round</span>(<span class="fu">specificity_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a> <span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated  Specificity of the model is:"</span>, </span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>             <span class="fu">round</span>(<span class="fu">specificity_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] "The calculated  Specificity of the model is: 0.9597"</code></pre>
 </div>
@@ -266,13 +347,17 @@ We can verify by adding the accuracy and the error rate which should sum to 1</p
 <section id="f1-score" class="level2">
 <h2 class="anchored" data-anchor-id="f1-score">8- F1 Score</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>f1_score_func <span class="ot">&lt;-</span> <span class="cf">function</span>(df, actual, predicted) {</span>
 <span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">precision_func</span>(df, actual, predicted)</span>
 <span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>  r <span class="ot">&lt;-</span> <span class="fu">sensitivity_func</span>(df, actual, predicted)</span>
 <span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>  <span class="dv">2</span> <span class="sc">*</span> (p <span class="sc">*</span> r) <span class="sc">/</span> (p <span class="sc">+</span> r)</span>
 <span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>calculated_f1<span class="ot">&lt;-</span><span class="fu">f1_score_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>)</span>
-<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a> <span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated  F1 score of the model is:"</span>, <span class="fu">round</span>(<span class="fu">f1_score_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a> <span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"The calculated  F1 score of the model is:"</span>, </span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>             <span class="fu">round</span>(<span class="fu">f1_score_func</span>(data, <span class="st">"class"</span>, <span class="st">"scored.class"</span>),<span class="dv">4</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] "The calculated  F1 score of the model is: 0.6067"</code></pre>
 </div>
@@ -282,6 +367,8 @@ We can verify by adding the accuracy and the error rate which should sum to 1</p
 <section id="roc-curve-function-and-plot" class="level2">
 <h2 class="anchored" data-anchor-id="roc-curve-function-and-plot">10- ROC Curve Function and plot</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>roc_curve_custom <span class="ot">&lt;-</span> <span class="cf">function</span>(df, actual, prob_col) {</span>
 <span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>  thresholds <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">1</span>, <span class="dv">0</span>, <span class="sc">-</span><span class="fl">0.01</span>)</span>
 <span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -305,14 +392,16 @@ We can verify by adding the accuracy and the error rate which should sum to 1</p
 <span id="cb32-21"><a href="#cb32-21" aria-hidden="true" tabindex="-1"></a>  p<span class="ot">&lt;-</span><span class="fu">ggplot</span>(<span class="fu">data.frame</span>(FPR, TPR), <span class="fu">aes</span>(<span class="at">x =</span> FPR, <span class="at">y =</span> TPR)) <span class="sc">+</span></span>
 <span id="cb32-22"><a href="#cb32-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="at">color =</span> <span class="st">"black"</span>) <span class="sc">+</span></span>
 <span id="cb32-23"><a href="#cb32-23" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_abline</span>(<span class="at">linetype =</span> <span class="st">"dashed"</span>, <span class="at">color =</span> <span class="st">"red"</span>) <span class="sc">+</span></span>
-<span id="cb32-24"><a href="#cb32-24" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Custom ROC Curve"</span>, <span class="at">x =</span> <span class="st">"False Positive Rate"</span>, <span class="at">y =</span> <span class="st">"True Positive Rate"</span>) <span class="sc">+</span></span>
-<span id="cb32-25"><a href="#cb32-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>()</span>
-<span id="cb32-26"><a href="#cb32-26" aria-hidden="true" tabindex="-1"></a>   </span>
+<span id="cb32-24"><a href="#cb32-24" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Custom ROC Curve"</span>, <span class="at">x =</span> <span class="st">"False Positive Rate"</span>,</span>
+<span id="cb32-25"><a href="#cb32-25" aria-hidden="true" tabindex="-1"></a>         <span class="at">y =</span> <span class="st">"True Positive Rate"</span>) <span class="sc">+</span></span>
+<span id="cb32-26"><a href="#cb32-26" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>()</span>
 <span id="cb32-27"><a href="#cb32-27" aria-hidden="true" tabindex="-1"></a>   </span>
-<span id="cb32-28"><a href="#cb32-28" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(<span class="fu">list</span>( <span class="at">Plot=</span>p,<span class="at">AUC =</span> auc))</span>
-<span id="cb32-29"><a href="#cb32-29" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb32-30"><a href="#cb32-30" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-31"><a href="#cb32-31" aria-hidden="true" tabindex="-1"></a><span class="fu">roc_curve_custom</span>(data, <span class="st">"class"</span>, <span class="st">"scored.probability"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb32-28"><a href="#cb32-28" aria-hidden="true" tabindex="-1"></a>   </span>
+<span id="cb32-29"><a href="#cb32-29" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(<span class="fu">list</span>( <span class="at">Plot=</span>p,<span class="at">AUC =</span> auc))</span>
+<span id="cb32-30"><a href="#cb32-30" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb32-31"><a href="#cb32-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-32"><a href="#cb32-32" aria-hidden="true" tabindex="-1"></a><span class="fu">roc_curve_custom</span>(data, <span class="st">"class"</span>, <span class="st">"scored.probability"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>$Plot</code></pre>
 </div>
@@ -333,6 +422,8 @@ $AUC
 <section id="all-metrics-comparison-caret" class="level2">
 <h2 class="anchored" data-anchor-id="all-metrics-comparison-caret">11- All Metrics Comparison Caret</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(</span>
 <span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">Accuracy =</span> computed_acc,</span>
 <span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">Error_Rate =</span> computed_err,</span>
@@ -341,18 +432,22 @@ $AUC
 <span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">Specificity =</span> calculated_specif,</span>
 <span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">F1_Score =</span> calculated_f1</span>
 <span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>   Accuracy Error_Rate Precision Sensitivity Specificity  F1_Score
 1 0.8066298  0.1933702   0.84375   0.4736842   0.9596774 0.6067416</code></pre>
 </div>
 </div>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>caret_conf <span class="ot">&lt;-</span> <span class="fu">confusionMatrix</span>(</span>
 <span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">factor</span>(data<span class="sc">$</span>scored.class),</span>
 <span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">factor</span>(data<span class="sc">$</span>class),</span>
 <span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">positive =</span> <span class="st">"1"</span></span>
 <span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>)</span>
 <span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>caret_conf</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>Confusion Matrix and Statistics
 
@@ -386,16 +481,22 @@ Prediction   0   1
 <p>The functions match output from the caret package indicating caret can be used to calculate these metrics reliably and easily.</p>
 </section>
 <section id="proc" class="level2">
-<h2 class="anchored" data-anchor-id="proc">12-13 pRoc</h2>
+<h2 class="anchored" data-anchor-id="proc">12-13 pROC</h2>
 <div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb39"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>roc_obj <span class="ot">&lt;-</span> <span class="fu">roc</span>(data<span class="sc">$</span>class, data<span class="sc">$</span>scored.probability)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stderr">
 <pre><code>Setting levels: control = 0, case = 1</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
 <pre><code>Setting direction: controls &lt; cases</code></pre>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(roc_obj, <span class="at">col=</span><span class="st">"black"</span>, <span class="at">main=</span><span class="st">"pROC ROC Curve"</span>,<span class="at">legacy.axes =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -403,7 +504,10 @@ Prediction   0   1
 </figure>
 </div>
 </div>
+<details class="code-fold">
+<summary>Code</summary>
 <div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="fu">auc</span>(roc_obj)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output cell-output-stdout">
 <pre><code>Area under the curve: 0.8503</code></pre>
 </div>

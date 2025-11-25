@@ -1,12 +1,11 @@
 ---
-title: "DATA 621 Assignment 2"
+title: "Classsification and CAret"
 author: "Darwhin Gomez"
 format:
- pdf:
+  html:
     toc: true
-    code-line-numbers: true
-    
-    code-overflow: wrap
+    toc-depth: 3
+    code-fold: true
 editor: visual
 ---
 

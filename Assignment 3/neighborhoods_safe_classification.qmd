@@ -1,0 +1,498 @@
+---
+title: "Unsafe Neighborhoods"
+author: "Darwhin Gomez"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+  
+editor: visual
+---
+
+```{r lib , include =FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(GGally)
+library(broom)
+library(caret)
+library(MASS)
+library(psych)
+library(skimr)
+
+library(pROC)
+
+```
+
+## Overview and Objective
+
+In this homework assignment, we will explore, analyze and model a data set containing information on crime for various neighborhoods of a major city. Each record has a response variable indicating whether or not the crime rate is above the median crime rate (1) or not (0).
+
+Our objective is to build a binary logistic regression model on the training data set to predict whether the neighborhood will be at risk for high crime levels. We will provide classifications and probabilities for the evaluation data set using your binary logistic regression model. We can only use the variables given to (or, variables that we derive from the variables provided). Below is a short description of the variables of interest in the data set:
+
+### **Variable Descriptions**
+
+-   **zn**: Proportion of residential land zoned for large lots (over 25,000 square feet) *(predictor variable)*\
+-   **indus**: Proportion of non-retail business acres per suburb *(predictor variable)*\
+-   **chas**: Dummy variable indicating whether the suburb borders the Charles River (1 = yes, 0 = no) *(predictor variable)*\
+-   **nox**: Nitrogen oxides concentration (parts per 10 million) *(predictor variable)*\
+-   **rm**: Average number of rooms per dwelling *(predictor variable)*\
+-   **age**: Proportion of owner-occupied units built prior to 1940 *(predictor variable)*\
+-   **dis**: Weighted mean of distances to five Boston employment centers *(predictor variable)*\
+-   **rad**: Index of accessibility to radial highways *(predictor variable)*\
+-   **tax**: Full-value property-tax rate per \$10,000 *(predictor variable)*\
+-   **ptratio**: Pupil–teacher ratio by town *(predictor variable)*\
+-   **lstat**: Percentage of lower-status population *(predictor variable)*\
+-   **medv**: Median value of owner-occupied homes in \$1,000s *(predictor variable)*\
+-   **target**: Whether the crime rate is above the median (1 = high crime, 0 = low crime) *(response variable)*
+
+## Data
+
+We begin by importing the dataset into the R environment and creating two objects, **`train`** and **`test`**, which will be used throughout the analysis. The **training set** is used for exploratory analysis, feature preparation, and model development, while the **test set** is reserved for evaluating model performance on unseen data. This separation ensures an unbiased assessment of how well our final model generalizes beyond the data it was trained on.
+
+```{r import , include=FALSE}
+train <- read_csv("crime-training-data_modified.csv") %>% clean_names()
+test <- read_csv("crime-evaluation-data_modified.csv") %>% clean_names()
+print("Data imported to test and train tibbles")
+```
+
+```{r types , include=FALSE, echo=FALSE}
+
+str(train)
+str(test)
+```
+
+With the dataset fully loaded, we begin our approach to predicting which neighborhoods are at risk of being classified as “unsafe.” Our process starts with exploratory data analysis (EDA) to understand variable distributions and relationships, followed by data preparation through cleaning, centering, and scaling. We then proceed to experiment with multiple logistic regression models to identify the most accurate and interpretable solution for predicting neighborhood safety. 
+
+## EDA
+
+We use the **`skimr`** package to generate a quick statistical overview of the dataset, including the minimum, maximum, mean, and interquartile range for each variable. The summary also provides a compact histogram for every numeric feature, allowing us to quickly visualize each variable’s spread, central tendency, and potential skewness. This approach offers an efficient first look at the dataset’s structure, helps identify possible outliers, and sets the foundation for deeper exploratory analysis and data preprocessing steps.
+
+```{r skim1}
+my_skim <- skim_with(
+ numeric = sfl(median ),append = TRUE)
+
+# Now run skim
+my_skim(train)|>
+  arrange((complete_rate))
+```
+
+```{r skim2}
+my_skim(test)|>
+  arrange((complete_rate))
+```
+
+There is a categorical variables in our data set lets look at its distribution
+
+```{r chasfreq}
+cat("F T Charles River \n no  yes \n==========\n", table(train$chas))
+```
+
+We see that our neighborhoods mostly do not border the Charles River.\
+Now lets look at our target variable to see if we have a balanced data set.
+
+```{r trag freq}
+cat("F T TARGET \n no  yes \n==========\n", table(train$target))
+```
+
+Lets convert our `char` predictor to a factor so that R can better handle it.
+
+```{r factor}
+train$chas <- factor(train$chas,
+                     levels = c(0, 1),
+                        labels = c("no border", "borders"))
+test$chas <- factor(test$chas,
+                     levels = c(0, 1),
+                        labels = c("no border", "borders"))
+
+```
+
+Converting our **target** variable to a factor for logistic regression.
+
+```{r target}
+train$target <- factor(train$target, levels = c(0,1))
+
+```
+
+```{r numericvars}
+numeric_vars <- train %>%
+  dplyr::select(where(is.numeric)) %>%
+  names()
+numeric_vars
+
+```
+
+```{r summary}
+library(psych)
+describe(dplyr::select(train, all_of(numeric_vars)))
+
+```
+
+```{r distri, fig.height=10, fig.width=10}
+
+library(tidyr)
+
+# Select numeric variables only
+num_vars <- train %>%dplyr::select(where(is.numeric))
+
+# Convert to long format for facet plotting
+num_long <- num_vars %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value")
+
+# Density plots only
+ggplot(num_long, aes(x = value)) +
+  geom_density(fill = "grey", alpha = 0.6, color = "black") +
+  facet_wrap(~ variable, scales = "free", ncol = 3) +
+  labs(
+    title = "Density Plots of Numeric Predictors",
+    x = "Value", 
+    y = "Density"
+  ) +
+  theme_minimal(base_size = 12)
+  
+```
+
+.The density plots reveal that several predictors are not normally distributed, showing varying degrees of skewness. Variables such as **zn, rad, tax, dis,** and **lstat** display strong right skew, indicating that most neighborhoods have small values with a few much larger ones. In contrast, age shows a slight left skew, while rm, ptratio, and nox appear approximately symmetric. The variable **indus** is bimodal, suggesting the presence of distinct neighborhood types or zoning patterns. These distribution shapes highlight the diversity of Boston neighborhoods and suggest that some features may benefit from transformations or standardization prior to modeling. Overall, the density plots provide valuable insight into the range, shape, and variability of each predictor before further statistical analysis.\
+\
+
+```{r ourliers}
+# Identify outliers using the 1.5*IQR rule
+outlier_summary <- num_vars %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value") %>%
+  group_by(variable) %>%
+  summarise(
+    Q1  = quantile(value, 0.25, na.rm = TRUE),
+    Q3  = quantile(value, 0.75, na.rm = TRUE),
+    IQR = Q3 - Q1,
+    lower_bound = Q1 - 1.5 * IQR,
+    upper_bound = Q3 + 1.5 * IQR,
+    n_outliers = sum(value < lower_bound | value > upper_bound),
+    prop_outliers = round(n_outliers / n() * 100, 2)
+  )
+
+outlier_summary
+
+```
+
+\
+The variables **zn, medv,** and **rm** exhibit the highest number of outliers, with approximately 48, 38, and 28 observations outside the interquartile range, respectively. In comparison, **dis and lstat** contain relatively few outliers (around 6 and 5, respectively). Lets take a look and ponder how this relates to our data is noise or is data with meaningful information for us.\
+
+```{r bxplt,fig.height=10, fig.width=10 }
+ggplot(num_long, aes(x = variable, y = value)) +
+  geom_boxplot(fill = "#69b3a2", color = "black", outlier.color = "red") +
+  facet_wrap(~ variable, scales = "free", ncol = 3) +
+  labs(
+    title = "Independent Boxplots of Numeric Predictors",
+    x = NULL,
+    y = "Value"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+```
+
+The variables **rm** (average number of rooms per dwelling) and **medv** (median value of owner-occupied homes) both show clear high-value outliers in the boxplots. These likely correspond to neighborhoods with unusually large homes or significantly higher property values. Since these observations appear to represent genuine, high-end housing markets rather than data entry errors, they will be retained for modeling but may benefit from transformation to reduce skewness.
+
+The variable **lstat**, representing the percentage of the population with lower socioeconomic status, also exhibits a wide spread with several extreme values, suggesting substantial socioeconomic diversity across neighborhoods.
+
+The variable **dis** (weighted mean distance to five Boston employment centers) shows two notable high-value outliers. These observations likely represent neighborhoods that are geographically distant from the city’s core employment hubs. Such areas may be more isolated and less accessible compared to the more central and densely connected neighborhoods within the Boston region.
+
+Finally, **zn** (proportion of residential land zoned for large lots) contains high-value outliers, indicating a small number of neighborhoods dominated by large-lot zoning. These reflect real structural zoning differences rather than noise and will be preserved.
+
+## Transformations
+
+```{r centerscale}
+library(caret)
+library(dplyr)
+
+# Select numeric predictors (exclude categorical and target)
+num_features <- train %>%
+  dplyr::select(where(is.numeric)) 
+
+# Create preprocessing model (center + scale only)
+preproc_model <- preProcess(num_features, method = c("center", "scale"))
+
+# Apply transformation to training data
+train_scaled <- predict(preproc_model, num_features)
+
+# Combine back with categorical and target variables
+train_final <- bind_cols(train_scaled, train %>% dplyr::select(chas, target))
+
+# Quick check
+summary(train_final)
+
+test_scaled <- predict(preproc_model, test)
+
+
+```
+
+We perform a simple centering and scaling of the numeric predictors to standardize their ranges. This step ensures that all variables contribute equally to the model and helps with numerical stability during optimization. Logistic regression does not require linearity or normal distributions of predictors, so no additional transformations are necessary at this stage. With the data standardized, we can now proceed to train our logistic regression models.Partitioning Data
+
+Now will begin modeling before we do we will split our training data to be able to test our model since our test set does not have labeled data to calculate evaluation metrics.\
+
+```{r splitrain}
+library(caret)
+
+set.seed(123)  # for reproducibility
+
+# Create index for 70% training
+train_index <- createDataPartition(train_final$target, p = 0.7, list = FALSE)
+
+# Split data
+dev_set  <- train_final[train_index, ]
+test_set <- train_final[-train_index, ]
+
+# Check sizes
+nrow(dev_set)
+nrow(test_set)
+
+```
+
+Printing the distribution of `target.`
+
+```{r sanity}
+
+prop.table(table(dev_set$target))
+prop.table(table(test_set$target))
+
+```
+
+Perfect now the models!
+
+## Models
+
+We train a model with all predictor to begin and a model with what I perceive to be easy to interpret predictors, and we will also include a step-wise model that iterates to find the optimal model using AIC .
+
+### Akaike Information Criterion (AIC)
+
+The Akaike Information Criterion (AIC) is a measure used to evaluate the quality of a statistical model by balancing goodness of fit with model simplicity. It penalizes models that use too many predictors while rewarding those that explain the data well.
+
+$AIC = 2k -2 \times ln(\hat L)$
+
+where:
+
+1.  $(\hat L)$ is the max log-likelihood measures how well the model fits the observed data
+
+2.  $k$ is the number of parameters in the model (including the intercept).
+
+**Interpretation:**
+
+A **lower AIC** value indicates a better model, meaning it achieves a strong fit with fewer parameters.
+
+```{r models}
+# Model 1 — Full model
+model_full <- glm(target ~ ., data = dev_set, family = binomial)
+
+# Model 2 — Reduced model (focus on key interpretable predictors)
+model_reduced <- glm(target ~ rm + lstat + medv + rad + tax, 
+                     data = dev_set, family = binomial)
+
+```
+
+::: panel-tabset
+## Full Model
+
+```{r fmodel}
+summary(model_full)
+```
+
+The logistic regression model explains a large portion of the variance in crime classification.\
+
+Significant predictors include **nox**, **rad**, **ptratio**, **age**, **dis**, **tax**, and **medv**, while **chas** is borderline significant.\
+
+The direction and magnitude of the coefficients align with known relationships from the Boston housing data higher pollution, highway accessibility, and older housing correlate with elevated crime likelihoods.\
+
+The model’s AIC (172.4) and substantial deviance reduction confirm a strong fit to the
+
+## Reduced model
+
+```{r rmodel}
+summary(model_reduced)
+```
+
+The reduced logistic regression model, which included **rm**, **lstat**, **medv**, **rad**, and **tax**, explains a moderate amount of variation in crime classification. Among these predictors, **rad**, **tax**, and **medv** were statistically significant, while **rm** and **lstat** were not. The results suggest that neighborhoods with greater highway accessibility (**rad**) and higher median home values (**medv**) are more likely to fall into the high-crime category, whereas areas with higher property taxes (**tax**) tend to have lower crime rates, likely reflecting wealthier or better-maintained neighborhoods. Overall, the reduced model fits the data less effectively than the full model, showing a higher AIC and smaller deviance reduction. While it is easier to interpret, it loses some predictive strength by omitting key predictors such as **nox**, **ptratio**, and **dis**.
+
+## Step Model
+
+```{r step model}
+# Stepwise model based on AIC
+model_step <- step(model_full, direction = "both", trace = FALSE)
+
+# View selected variables
+summary(model_step)
+
+```
+
+The stepwise logistic regression model retained nine predictors: **zn**, **nox**, **age**, **dis**, **rad**, **tax**, **ptratio**, **medv**, and **chas**—and achieved a strong overall fit, with a substantial reduction in deviance (from 453.24 to 148.07) and an AIC of 168.1, indicating improved model efficiency compared to the full model. Several predictors were statistically significant, including **nox**, **age**, **dis**, **rad**, **tax**, **ptratio**, and **medv**, while **chas** was marginally significant. The direction of the coefficients aligns with expectations: higher pollution (**nox**), greater highway accessibility (**rad**), and higher pupil–teacher ratios (**ptratio**) are associated with increased odds of a neighborhood being classified as high-crime, whereas higher tax rates (**tax**) are linked to lower crime likelihood. Overall, the model provides strong explanatory power while remaining more parsimonious than the full version.
+
+## Predictions
+
+```{r preds}
+# Predictions from FULL model
+test_set$prob_full <- predict(model_full, newdata = test_set, type = "response")
+test_set$pred_full <- ifelse(test_set$prob_full > 0.5, 1, 0)
+
+# Predictions from REDUCED model
+test_set$prob_reduced <- predict(model_reduced, newdata = test_set, type = "response")
+test_set$pred_reduced <- ifelse(test_set$prob_reduced > 0.5, 1, 0)
+# Predicitons for the Steo
+test_set$prob_step <- predict(model_step, newdata = test_set, type = "response")
+test_set$pred_step <- ifelse(test_set$prob_step > 0.5, 1, 0)
+
+# Confusion matrix
+cm_step <- confusionMatrix(
+  as.factor(test_set$pred_step),
+  test_set$target,
+  positive = "1"
+)
+cm_full <- confusionMatrix(
+  as.factor(test_set$pred_full),
+  test_set$target,
+  positive = "1"
+)
+
+cm_reduced <- confusionMatrix(
+  as.factor(test_set$pred_reduced),
+  test_set$target,
+  positive = "1"
+)
+
+
+```
+
+```{r model_eval}
+ print(cm_full)
+```
+
+```{r model_reval}
+ print(cm_reduced)
+```
+
+```{r model_seval}
+print(cm_step)
+```
+
+## Analysis
+
+The full logistic regression model performed very well on the test set, achieving an overall accuracy of 91.4% with nearly balanced sensitivity (91.2%) and specificity (91.6%). This indicates that the model correctly classified both high- and low-crime neighborhoods with similar success rates. The Kappa statistic (0.83) reflects strong agreement beyond chance, confirming that the model generalizes effectively to unseen data. In addition, the McNemar’s test p-value (1.00) suggests no significant difference between false positives and false negatives, indicating balanced performance across both classes.
+
+The reduced logistic regression model, by comparison, achieved a lower accuracy of 84.9%, with sensitivity dropping to 76.5% but slightly higher specificity (92.9%). This pattern shows that the reduced model is more conservative—it better identifies low-crime areas but misses more high-crime neighborhoods. The Kappa value (0.70) indicates moderate agreement, and the McNemar’s test p-value (0.029) reveals an imbalance in misclassification, suggesting the model’s errors are not evenly distributed.
+
+The stepwise logistic regression model, which selected only the most informative predictors based on AIC, achieved the best overall performance, with an accuracy of 92.1%, sensitivity of 94.1%, and specificity of 90.1%. The Kappa statistic (0.84) indicates excellent agreement beyond chance, while the McNemar’s test p-value (0.55) suggests balanced classification errors. This model strikes the best balance between predictive accuracy and simplicity, maintaining nearly identical performance to the full model while using fewer predictors.
+
+Overall, while the full model provides a strong and comprehensive fit, the stepwise model offers a more efficient alternative without sacrificing performance. The reduced model remains the most interpretable but at a clear cost in predictive power. The results suggest that a carefully selected subset of predictors like **nox**, **rad**, **ptratio**, and **tax** capture most of the explanatory power needed to accurately classify neighborhoods by crime level.\
+
+## ROC
+
+```{r roc plots}
+ #Compute ROC objects
+roc_full <- roc(test_set$target, test_set$prob_full)
+roc_reduced <- roc(test_set$target, test_set$prob_reduced)
+roc_step <- roc(test_set$target, test_set$prob_step)
+
+# Plot all three ROC curves
+plot(roc_full, col = "blue", lwd = 2, main = "ROC Curves - Logistic Regression Models")
+plot(roc_reduced, col = "red", lwd = 2, add = TRUE)
+plot(roc_step, col = "darkgreen", lwd = 2, add = TRUE)
+
+# Add legend
+legend("bottomright",
+       legend = c(
+         paste0("Full Model (AUC = ", round(auc(roc_full), 3), ")"),
+         paste0("Reduced Model (AUC = ", round(auc(roc_reduced), 3), ")"),
+         paste0("Stepwise Model (AUC = ", round(auc(roc_step), 3), ")")
+       ),
+       col = c("blue", "red", "darkgreen"),
+       lwd = 2,
+       bty = "n")
+```
+
+TheThe ROC comparison shows that all three models perform well, with AUC values above 0.90, indicating strong overall classification ability. The **full logistic regression model** achieves the highest AUC (0.982), followed very closely by the **stepwise model (0.98)**. Both demonstrate excellent discrimination between high- and low-crime neighborhoods. The **reduced model** performs noticeably worse (AUC = 0.93), suggesting some predictive information was lost when limiting the number of predictors. Overall, the **stepwise model** offers nearly the same predictive performance as the full model but with fewer variables, making it the most efficient and practical option for classification
+:::
+
+## Conclusion
+
+```{r finalrex}
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Build a summary table of all model performance metrics
+model_comparison <- data.frame(
+  Model = c("Full Model", "Reduced Model", "Stepwise Model"),
+  Accuracy = c(
+    cm_full$overall["Accuracy"],
+    cm_reduced$overall["Accuracy"],
+    cm_step$overall["Accuracy"]
+  ),
+  Precision = c(
+    cm_full$byClass["Pos Pred Value"],
+    cm_reduced$byClass["Pos Pred Value"],
+    cm_step$byClass["Pos Pred Value"]
+  ),
+  Recall = c(
+    cm_full$byClass["Sensitivity"],
+    cm_reduced$byClass["Sensitivity"],
+    cm_step$byClass["Sensitivity"]
+  ),
+  F1_Score = c(
+    cm_full$byClass["F1"],
+    cm_reduced$byClass["F1"],
+    cm_step$byClass["F1"]
+  ),
+  AUC = c(
+    auc(roc_full),
+    auc(roc_reduced),
+    auc(roc_step)
+  )
+)
+
+# Format the table neatly for Quarto output
+model_comparison %>%
+  mutate(across(-Model, ~ round(.x, 3))) %>%
+   arrange(desc(F1_Score)) %>%
+  kbl(caption = "Performance Comparison of Logistic Regression Models") %>%
+  kable_styling(full_width = FALSE, position = "center", bootstrap_options = c("striped", "hover", "condensed"))
+
+```
+
+Based on the results of all three logistic regression models, the stepwise model provides the best balance between predictive performance and simplicity. It achieved an accuracy of 92% and an AUC of 0.98, nearly identical to the full model (AUC = 0.982) but with fewer predictors, making it more efficient and easier to interpret. The analysis identified several statistically significant predictors of neighborhood crime rate, including nitric oxide concentration (nox), highway accessibility (rad), pupil–teacher ratio (ptratio), distance to employment centers (dis), age of housing (age), and property tax rate (tax). Higher values of nox, rad, ptratio, and age are associated with a greater likelihood of a neighborhood being classified as high-crime, while higher tax rates are linked to lower crime probability, reflecting more affluent areas.
+
+Overall, the stepwise logistic regression model is recommended as the final model due to its strong predictive accuracy, interpretability, and parsimony. It effectively captures the key environmental and socioeconomic factors influencing crime while avoiding unnecessary model complexity.
+
+## Eval Predictions
+
+This section provides predictions for the eval set provided.\
+
+```{r eval_preds}
+test_scaled$prob_step <- predict(model_step, newdata = test_scaled, type = "response")
+
+# Add binary predictions (0/1)
+test_scaled$pred_step <- ifelse(test_scaled$prob_step > 0.5, 1, 0)
+
+# View summary
+summary(test_scaled$prob_step)
+table(test_scaled$pred_step)
+
+
+submission <- test_scaled %>%
+  mutate(
+    ID = row_number(),
+    Probability = round(prob_step, 4)  # round here inside mutate
+  ) %>%
+  dplyr::select(ID, pred_step, Probability) %>%
+  rename(Predicted = pred_step)
+
+# Write to CSV
+write.csv(submission, "crime_predictions_stepwise.csv", row.names = FALSE)
+
+# Quick check
+print(submission)
+
+
+
+```
