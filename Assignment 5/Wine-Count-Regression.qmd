@@ -1,0 +1,724 @@
+---
+title: "Wine Count Regression"
+author: "Darwhin Gomez"
+format:
+  pdf:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+  
+editor: visual
+---
+
+## Wine Count Regression
+
+Overview In this homework assignment, you will explore, analyze and model a data set containing information on approximately 12,000 commercially available wines. The variables are mostly related to the chemical properties of the wine being sold. The response variable is the number of sample cases of wine that were purchased by wine distribution companies after sampling a wine. These cases would be used to provide tasting samples to restaurants and wine stores around the United States. The more sample cases purchased, the more likely is a wine to be sold at a high end restaurant. A large wine manufacturer is studying the data in order to predict the number of wine cases ordered based upon the wine characteristics. If the wine manufacturer can predict the number of cases, then that manufacturer will be able to adjust their wine offering to maximize sales. Your objective is to build a count regression model to predict the number of cases of wine that will be sold given certain properties of the wine. HINT: Sometimes, the fact that a variable is missing is actually predictive of the target. You can only use the variables given to you (or variables that you derive from the variables provided).
+
+| Variable Name | Definition | Theoretical Effect |
+|------------------|--------------------------|----------------------------|
+| INDEX | Identification variable (do not use) | None |
+| TARGET | Number of cases purchased | None |
+| AcidIndex | Proprietary method of testing total acidity of wine using a weighted average |  |
+| Alcohol | Alcohol content |  |
+| Chlorides | Chloride content of wine |  |
+| CitricAcid | Citric acid content |  |
+| Density | Density of wine |  |
+| FixedAcidity | Fixed acidity of wine |  |
+| FreeSulfurDioxide | Sulfur dioxide content of wine |  |
+| LabelAppeal | Marketing score indicating label appeal. High: customers like it. Negative: customers dislike it. | Higher label appeal suggests higher sales. |
+| ResidualSugar | Residual sugar of wine |  |
+| STARS | Wine rating by expert panel (1–4 stars) | Higher number of stars suggests higher sales. |
+| Sulphates | Sulfate content of wine |  |
+| TotalSulfurDioxide | Total sulfur dioxide content of wine |  |
+| VolatileAcidity | Volatile acid content of wine |  |
+| pH | pH of wine |  |
+
+```{r lib , include =FALSE}
+knitr::opts_chunk$set(echo = TRUE, include = FALSE)
+library(tidyverse)
+library(janitor)
+library(GGally)
+library(broom)
+library(caret)
+library(MASS)
+library(psych)
+library(skimr)
+library(glmnet)
+library(randomForest)
+library(xgboost)
+library(e1071)
+library(pROC)
+library(patchwork)
+library(pscl)
+
+```
+
+## Data Exploration
+
+In this section, describe the structure of the wine training dataset, highlight important summary statistics, identify missing values, examine relationships with the target variable, and show key visualizations.
+
+```{r ingest}
+wine_data<- read.csv("wine-training-data.csv")
+wine_test <- read.csv("wine-evaluation-data.csv")
+```
+
+### **Data-set Overview**
+
+```{r summary}
+cat("Train")
+str(wine_data)
+cat("Test")
+str(wine_test)
+```
+
+The training dataset contains **12,795 observations** and **14 predictor variables**, and the target variable (`TARGET`). The variables include chemical measurements such as acidity, sulfur content, pH levels, alcohol concentration, and marketing-related attributes like `LabelAppeal` and `STARS`. The evaluation set holds **3,335 observations, there are all numeric variables with** `LableAppeal, AcidIndex, Stars` being of the `int` type the other 11 predictors are numeric type.
+
+### **Summary Statistics**
+
+Provide mean, median, standard deviation, and distribution shape for key variables.
+
+::: panel-tabset
+## Train Summary
+
+```{r summary2, include=TRUE}
+wine_data<- wine_data|>
+  dplyr::select(-INDEX)
+summary(wine_data)
+
+```
+
+## Test Summary
+
+```{r summary 3, include = TRUE}
+wine_test<- wine_test|>
+  dplyr::select(-TARGET)
+summary(wine_test)
+
+```
+
+## Correlation Plot
+
+```{r corr_mat}
+cor_mat <- cor(wine_data, use = "pairwise.complete.obs")
+
+tgt_cor <- cor_mat[ , "TARGET"]   # extract TARGET column
+sort(tgt_cor)
+
+
+```
+
+```{r cor_plot, include=TRUE}
+library(corrplot)
+corr_p<-corrplot(cor_mat, method = "color", type = "upper")
+
+
+```
+
+## Distributions
+
+```{r dis, include=TRUE}
+par(mfrow=c(2,3))
+for (v in names(wine_data)[names(wine_data) != "TARGET"]) {
+  hist(wine_data[[v]], main=v, col="lightgrey")
+}
+
+
+```
+
+## Target Distribution
+
+```{r tar_dis,include=TRUE}
+hist(wine_data$TARGET)
+
+```
+:::
+
+Most variables in the dataset display fairly balanced, centered distributions, consistent with standardized chemical measures. `FixedAcidity, VolatileAcidity, CitricAcid, Density, pH, Alcohol,` and similar predictors do not exhibit strong skew and therefore do not require transformation.
+
+`AcidIndex` is the main exception, showing a noticeably right-skewed distribution. Because of this, we will bucket AcidIndex into categories rather than apply a mathematical transform, as bucketing provides a more stable and interpretable way to handle its nonlinearity.
+
+The `STARS` rating variable is discrete (1–4) with many missing values. Instead of treating missing `STARS` as zeros or excluding them, we will recode missing values as “Not Rated”, so wines without an expert rating are not implicitly penalized or interpreted as having low quality.
+
+Other variables, including `LabelAppea`l, are well-behaved and can be used in their original numeric form. Thus, only `AcidIndex` and `STARS` require special treatment in the preparation step.\
+
+The predictor variables also show minimal correlation with one another.\
+
+The `TARGET` variable ranges from 0 to 8 and shows a moderately right-skewed distribution. The most common purchase counts fall between 2 and 5 cases, with a noticeable spike at 0 but no severe zero inflation. Very few wines reach the upper end of the range, and the distribution decreases steadily after 4 cases. Overall, the shape of `TARGET` is consistent with a typical count outcome, supporting the use of Poisson and Negative Binomial regression models.
+
+## Data Preparation
+
+::: panel-tabset
+## Bucketing AcidIndex
+
+```{r bucketing}
+
+  wine_data$AcidIndex_bucket <- cut(
+  wine_data$AcidIndex,
+  breaks = c(-Inf, 6, 8, 10, Inf),
+  labels = c("Low", "Moderate", "High", "VeryHigh"))
+
+acid_bucket_plt<-ggplot(wine_data, aes(x = AcidIndex_bucket)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "AcidIndex Bucket Counts",
+       x = "Acidity Bucket",
+       y = "Count")
+
+```
+
+```{r buckting2,include=TRUE}
+
+acid_bucket_plt
+```
+
+## STAR
+
+```{r stars_recoding}
+wine_data$STARS_missing <- ifelse(is.na(wine_data$STARS), 1, 0)
+
+wine_data$STARS <- ifelse(
+  is.na(wine_data$STARS),
+  "NotRated",
+  as.character(wine_data$STARS)
+)
+
+wine_data$STARS <- factor(wine_data$STARS,
+                          levels = c("NotRated", "1", "2", "3", "4"))
+STARS_plt<-ggplot(wine_data, aes(x = STARS)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Recoded STARS Counts",
+       x = "Rating",
+       y = "Count")
+```
+
+```{r starsplot,include=TRUE}
+ STARS_plt
+```
+
+## NA's
+
+```{r missing_imputation,include=TRUE}
+# Variables with missing values
+vars_with_na <- c(
+  "ResidualSugar",
+  "Chlorides",
+  "FreeSulfurDioxide",
+  "TotalSulfurDioxide",
+  "Sulphates",
+  "Alcohol",
+  "pH"
+)
+
+# 1. Create missingness flags
+for (v in vars_with_na) {
+  wine_data[[paste0(v, "_missing")]] <- ifelse(is.na(wine_data[[v]]), 1, 0)
+}
+
+# 2. Median imputation
+for (v in vars_with_na) {
+  med <- median(wine_data[[v]], na.rm = TRUE)
+  wine_data[[v]][is.na(wine_data[[v]])] <- med
+}
+train_medians <- sapply(
+  wine_data[, vars_with_na],
+  median,
+  na.rm = TRUE
+)
+# 3. Verify no missing values remain
+colSums(is.na(wine_data))
+
+
+```
+
+```{r}
+colSums(is.na(wine_data))
+
+```
+
+## Test Mirroring Data Preparation
+
+```{r test_prep}
+### ============================================================
+### 1. AcidIndex Bucket (same cutpoints as training)
+### ============================================================
+
+wine_test$AcidIndex_bucket <- cut(
+  wine_test$AcidIndex,
+  breaks = c(-Inf, 6, 8, 10, Inf),
+  labels = c("Low", "Moderate", "High", "VeryHigh")
+)
+
+
+### ============================================================
+### 2. STARS Handling (missing → "NotRated")
+### ============================================================
+
+# Missingness flag
+wine_test$STARS_missing <- ifelse(is.na(wine_test$STARS), 1, 0)
+
+# Recode NA → "NotRated"
+wine_test$STARS <- ifelse(
+  is.na(wine_test$STARS),
+  "NotRated",
+  as.character(wine_test$STARS)
+)
+
+# Convert STARS to factor with same levels as training
+wine_test$STARS <- factor(
+  wine_test$STARS,
+  levels = c("NotRated", "1", "2", "3", "4")
+)
+
+
+### ============================================================
+### 3. Missingness Flags for Other Predictors
+### ============================================================
+
+vars_with_na <- c("ResidualSugar",
+                  "Chlorides",
+                  "FreeSulfurDioxide",
+                  "TotalSulfurDioxide",
+                  "Sulphates",
+                  "Alcohol","pH")
+
+for (v in vars_with_na) {
+  wine_test[[paste0(v, "_missing")]] <- ifelse(is.na(wine_test[[v]]), 1, 0)
+}
+
+
+
+for (v in vars_with_na) {
+  med <- train_medians[v]            # pull training median
+  wine_test[[v]][is.na(wine_test[[v]])] <- med
+}
+
+
+### ============================================================
+### 5. Match Factor Levels for AcidIndex_bucket
+### ============================================================
+
+wine_test$AcidIndex_bucket <- factor(
+  wine_test$AcidIndex_bucket,
+  levels = levels(wine_data$AcidIndex_bucket)
+)
+
+
+### ============================================================
+### 6. Check that no NAs remain
+### ============================================================
+
+colSums(is.na(wine_test))
+
+```
+
+```{r plots,include=TRUE}
+
+test_acid_plt<-ggplot(wine_test, aes(x = AcidIndex_bucket)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "AcidIndex Buckets in Test Data",
+       x = "AcidIndex Bucket",
+       y = "Count")
+test_stars_plt<-ggplot(wine_test, aes(x = STARS)) +
+  geom_bar(fill = "darkred") +
+  theme_minimal() +
+  labs(title = "STARS Ratings in Test Data",
+       x = "STARS Category",
+       y = "Count")
+
+test_stars_plt + test_acid_plt
+```
+
+## Spliting
+
+```{r splitingtrain, include=TRUE}
+
+
+set.seed(123) 
+
+# total number of rows
+n <- nrow(wine_data)
+
+# randomly sample 75% of the data for training
+train_idx <- sample(seq_len(n), size = 0.75 * n)
+
+# create training and validation sets
+wine_train <- wine_data[train_idx, ]
+wine_valid <- wine_data[-train_idx, ]
+
+
+cat("Training rows:", nrow(wine_train), "\n")
+cat("Validation rows:", nrow(wine_valid), "\n")
+
+```
+:::
+
+Several chemical variables contained missing values, including ResidualSugar, Chlorides, FreeSulfurDioxide, TotalSulfurDioxide, Sulphates, and Alcohol. For each of these, a binary missingness indicator was created, as missing measurements may carry predictive value. The original numeric values were then imputed using the median, which maintains the shape of each distribution while preventing the loss of observations. All data preparation was then replicated on the test set. Finally the training data set was split 75-25 for model development.
+
+## Building Models
+
+In this section we will explore different models to predict our target we will begin with a baseline linear model, then a multiple linear regression followed by possion and count models.
+
+```{r res}
+# build a results table:
+### ============================================================
+### MODEL RESULTS TRACKING SETUP  (NO PSEUDO R2)
+### ============================================================
+
+# Empty results table
+model_results <- data.frame(
+  Model = character(),
+  Type = character(),
+  R2 = numeric(),
+  Adj_R2 = numeric(),
+  MAE = numeric(),
+  RMSE = numeric(),
+  AIC = numeric(),
+  stringsAsFactors = FALSE
+)
+
+
+### ============================================================
+### Helper function to compute metrics and store them
+### ============================================================
+
+add_results <- function(model_name, model_type, model_obj, valid_data, preds) {
+  
+  # Compute MAE and RMSE
+  mae  <- mean(abs(valid_data$TARGET - preds))
+  rmse <- sqrt(mean((valid_data$TARGET - preds)^2))
+  
+  # Default for GLMs
+  r2 <- NA
+  adj_r2 <- NA
+  
+  # R-squared only for Linear Models
+  if (model_type == "Linear") {
+    sum_lm <- summary(model_obj)
+    r2 <- sum_lm$r.squared
+    adj_r2 <- sum_lm$adj.r.squared
+  }
+  
+  # Add row to results
+  new_row <- data.frame(
+    Model   = model_name,
+    Type    = model_type,
+    R2      = r2,
+    Adj_R2  = adj_r2,
+    MAE     = mae,
+    RMSE    = rmse,
+    AIC     = AIC(model_obj),
+    stringsAsFactors = FALSE
+  )
+  
+  assign("model_results",
+         rbind(model_results, new_row),
+         envir = .GlobalEnv)
+}
+
+```
+
+::: panel-tabset
+## Multiple Linear Model simple
+
+```{r lm_B,include =TRUE}
+### ============================================================
+### Linear Regression Model 1 (Baseline)
+### ============================================================
+
+lm1 <- lm(TARGET ~ STARS + LabelAppeal, data = wine_train)
+summary(lm1)
+
+# Evaluate on validation set
+pred_lm1 <- predict(lm1, newdata = wine_valid)
+
+mae_lm1  <- mean(abs(wine_valid$TARGET - pred_lm1))
+rmse_lm1 <- sqrt(mean((wine_valid$TARGET - pred_lm1)^2))
+add_results("LM1_Baseline", "Linear", lm1, wine_valid, pred_lm1)
+cat("LM1 MAE:", mae_lm1, "\n")
+cat("LM1 RMSE:", rmse_lm1, "\n")
+
+```
+
+## Multiple Linear Regression-full
+
+```{r lm_expanded, include=TRUE}
+### ============================================================
+### Linear Regression Model 2 (Expanded)
+### ============================================================
+
+lm2 <- lm(TARGET ~ STARS + LabelAppeal + AcidIndex_bucket + Alcohol, 
+          data = wine_train)
+
+summary(lm2)
+
+# Evaluate on validation set
+pred_lm2 <- predict(lm2, newdata = wine_valid)
+
+mae_lm2  <- mean(abs(wine_valid$TARGET - pred_lm2))
+rmse_lm2 <- sqrt(mean((wine_valid$TARGET - pred_lm2)^2))
+add_results("LM2_Expanded", "Linear", lm2, wine_valid, pred_lm2)
+cat("LM2 MAE:", mae_lm2, "\n")
+cat("LM2 RMSE:", rmse_lm2, "\n")
+
+```
+
+## Poisson regression base
+
+```{r poisbase,include=TRUE}
+pois1 <- glm(
+  TARGET ~ STARS + LabelAppeal ,
+  family = poisson(link = "log"),
+  data = wine_train
+)
+pred_pois1 <- predict(pois1, newdata = wine_valid, type = "response")
+add_results("Poisson Base", "Poisson", pois1, wine_valid, pred_pois1)
+
+
+# predictions on validation
+
+summary(pois1)
+
+```
+
+## Poisson Expanded\~
+
+```{r poiex, include=TRUE}
+pois2 <- glm(
+  TARGET ~ .,
+  family = poisson(link = "log"),
+  data = wine_train
+)
+
+pred_pois2 <- predict(pois2, newdata = wine_valid, type = "response")
+
+add_results("Poisson2", "Poisson", pois2, wine_valid, pred_pois2)
+
+summary(pois2)
+```
+
+## Negative Binomials simple
+
+```{r negbino,include=TRUE}
+nb1 <- glm.nb(
+  TARGET ~ STARS + LabelAppeal + AcidIndex_bucket + Alcohol,
+  data = wine_train
+)
+
+pred_nb1 <- predict(nb1, newdata = wine_valid, type = "response")
+
+add_results("NegBin1", "NegBin", nb1, wine_valid, pred_nb1)
+
+summary(nb1)
+```
+
+## Negative Binomial- Expanded
+
+```{r nefbi2,include=TRUE}
+nb2 <- glm.nb(
+  TARGET ~  .,
+  data = wine_train
+)
+
+pred_nb2 <- predict(nb2, newdata = wine_valid, type = "response")
+
+add_results("NegBin2", "NegBin", nb2, wine_valid, pred_nb2)
+
+summary(nb2)
+
+
+```
+
+## Zero Inflated Negative Bionomial
+
+```{r zeroinf,include=TRUE}
+
+
+# Example ZINB model
+zinb1 <- zeroinfl(
+  TARGET ~ STARS + LabelAppeal + AcidIndex_bucket + Alcohol |
+           STARS + LabelAppeal,      # zero-inflation part
+  data = wine_train,
+  dist = "negbin"
+)
+print(zinb1)
+summary(zinb1)
+pred_zinb <- predict(zinb1, newdata = wine_valid, type = "response")
+
+
+# Compute MAE and RMSE for ZINB
+mae_zinb  <- mean(abs(wine_valid$TARGET - pred_zinb))
+rmse_zinb <- sqrt(mean((wine_valid$TARGET - pred_zinb)^2))
+
+# Extract AIC properly
+aic_zinb <- AIC(zinb1)
+
+# Add row to results
+new_row <- data.frame(
+  Model   = "ZINB1",
+  Type    = "ZINB",
+  R2      = NA,             # not defined for ZINB
+  Adj_R2  = NA,             # not applicable
+  MAE     = mae_zinb,
+  RMSE    = rmse_zinb,
+  AIC     = aic_zinb,
+  stringsAsFactors = FALSE
+)
+
+model_results <- rbind(model_results, new_row)
+
+
+
+
+```
+:::
+
+## Selecting Model
+
+Across all models evaluated, the Zero-Inflated Negative Binomial model (ZINB1) demonstrated the strongest overall performance with the **lowest AIC (30,923.52)** and the **lowest MAE and RMSE** among all count-based models. Although the expanded linear regression model achieved competitive error metrics, linear models violate distributional assumptions for discrete count data and cannot serve as the final deployed model. They are retained only as benchmarks for comparison.
+
+Among the traditional count regression models, the Negative Binomial and Poisson variants performed reasonably well, but none matched the predictive accuracy or fit of the ZINB model. Both Poisson models showed higher AIC values and larger prediction errors, reflecting their inability to accommodate overdispersion. The Negative Binomial models improved on this but still failed to capture the substantial probability mass at zero: despite roughly 20% of the training data containing zero purchases, standard Poisson and NB models systematically underpredicted zeros due to the log-link structure, which forces strictly positive expected values.
+
+Introducing a zero-inflation component addressed this deficiency. The ZINB model explicitly separates the data-generating process into (1) a structural zero mechanism and (2) a count process for wines that are actually ordered. This two-part structure yielded superior predictive accuracy and a substantially better AIC than the NB or Poisson models. It also allowed the model to produce realistic zero predictions, something the standard GLM-based count models could not accomplish.
+
+Given its substantially better model fit, stronger predictive accuracy, and more realistic handling of zero outcomes, **ZINB1 was selected as the final model** for generating predictions on the evaluation dataset.
+
+```{r rersults, include=TRUE}
+model_results|>
+  arrange((AIC))
+```
+
+```{r AIC, include=TRUE}
+aic_mod_plt<-ggplot(model_results, aes(x = Model, y = AIC, )) +
+  geom_col() +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "AIC Comparison Across Models",
+       x = "Model",
+       y = "AIC")
+aic_zoom_plt<-ggplot(model_results, aes(x = Model, y = AIC, )) +
+  geom_col() +
+  coord_flip(xlim = NULL, ylim = c(min(model_results$AIC) - 1050,
+                                   max(model_results$AIC) + 1050)) +
+  theme_minimal() +
+  labs(title = "AIC Comparison (Zoomed In)",
+       x = "Model",
+       y = "AIC")
+
+aic_mod_plt + aic_zoom_plt
+
+```
+
+```{r, include=TRUE}
+
+# Extract residuals
+res_raw     <- residuals(zinb1, type = "response")
+res_pearson <- residuals(zinb1, type = "pearson")
+
+# Extract fitted values
+fitted_vals <- predict(zinb1, type = "response")
+
+
+
+# --- 1. Residual Distribution ---
+hist(res_raw,
+     breaks = 30,
+     col = "lightgrey",
+     border = "white",
+     main = "ZINB Residual Distribution",
+     xlab = "Raw Residuals")
+
+# --- 2. QQ Plot ---
+qqnorm(res_pearson,
+       main = "ZINB QQ Plot (Pearson Residuals)",
+       pch = 19, col = "#3366AA60")
+qqline(res_pearson, col = "red", lwd = 2)
+
+# --- 3. Fitted vs Actual ---
+plot(fitted_vals, wine_train$TARGET,
+     pch = 19, col = "#3366AA60",
+     xlab = "Fitted Values (ZINB)",
+     ylab = "Actual TARGET",
+     main = "Fitted vs Actual")
+abline(0, 1, col = "red", lwd = 2)
+
+
+
+
+
+```
+
+### Predictions
+
+```{r final_predictions, include=FALSE}
+
+
+### ============================================================
+### FINAL ZINB PREDICTION PIPELINE
+### ============================================================
+
+# 1. Zero-inflation probability: Pr(structural zero)
+p_zero <- predict(zinb1, newdata = wine_test, type = "zero")
+
+# 2. Count component prediction (NB mean μ)
+mu_pred <- predict(zinb1, newdata = wine_test, type = "count")
+
+# 3. Identify structural zeros using a 0.5 cutoff
+#    (Standard, interpretable, and assignment-friendly)
+is_zero <- p_zero > 0.5
+
+# 4. Non-zero predictions based on rounded μ
+count_pred <- round(mu_pred)
+
+# 5. Final combined prediction
+final_predictions <- ifelse(is_zero, 0, count_pred)
+
+# 6. Build output dataframe
+predsdf <- data.frame(
+  INDEX = wine_test$IN,
+  PREDICTED_TARGET = final_predictions
+)
+
+```
+
+```{r pred, include=TRUE}
+
+# 7. Inspect predictions
+head(predsdf, 20)
+
+# 8. Plot prediction distribution
+pred_dis <-ggplot(predsdf, aes(x = PREDICTED_TARGET)) +
+  geom_histogram(binwidth = 1, fill = "lightgrey", color = "white") +
+  labs(title = "Final TARGET Predictions (ZINB)",
+       x = "Predicted Case Sales")
+
+# 9. Save results for submission
+write.csv(predsdf, "final_predictions_ZINB.csv", row.names = FALSE)
+
+```
+
+### Conclusion
+
+```{r predictions, include=TRUE}
+hist(wine_train$TARGET)
+hist(predsdf$PREDICTED_TARGET)
+```
+
+The comparison between the training `TARGET` distribution and the ZINB model’s predicted distribution shows that the model successfully reproduces the overall shape, center, and spread of the observed case-sales behavior. Both histograms exhibit their highest frequencies in the 2–5 case range, indicating that the model accurately captures the most common purchasing patterns seen in the training data.
+
+The model also correctly preserves the long right tail, with non-zero predictions extending up to 7–8 cases, matching the maximum observed values in the training set. Importantly, unlike standard Poisson or Negative Binomial models both of which failed to generate zeros, the ZINB model produces a realistic number of zero predictions driven by its explicit zero-inflation component. Although the height of the zero bar is slightly lower than in the training distribution, the overall magnitude is directionally consistent and represents a substantial improvement over traditional count GLMs.
+
+Across the remaining count values, the predicted distribution aligns closely with the empirical one, with only minor differences in relative frequencies. The slight smoothing around counts 3–5 reflects the expected behavior of a probabilistic regression model producing mean-based predictions rather than exact replications of sample frequencies.
+
+Overall, the ZINB model provides a well-calibrated approximation of the true `TARGET` distribution, capturing both the central mass and the zero-inflation present in the data. This confirms that the model is appropriately tuned for deployment and capable of generating realistic predictions for the evaluation dataset.\
+
+### Important Predictors
+
+```{r model summary, include=TRUE}
+print(summary(zinb1))
+```
+
+In the **count model**, `STARS` ratings and `LabelAppea`l are the strongest positive predictors of case sales. Higher `STARS` levels significantly increase expected purchases, and `LabelAppeal` has a large positive effect, confirming that expert ratings and marketing appeal drive higher order volumes. `Alcohol` content also has a small positive effect. In contrast, wines in the `High` and `Very High` `AcidIndex` buckets show significantly lower expected sales, indicating that high acidity reduces demand.
+
+In the **zero-inflation model**, `STARS` ratings greatly reduce the likelihood of a structural zero, meaning expert-rated wines are far less likely to receive no orders at all. `LabelAppea`l also significantly decreases the chance of a zero outcome. Together, these results show that both expert ratings and label strength influence not only how many cases a wine sells, but also whether it is ordered in the first place.\
