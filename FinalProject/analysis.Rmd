@@ -1,0 +1,557 @@
+---
+title: "Fianl Project notebook"
+output: html_notebook
+author: "Darwhin Gomez"
+---
+
+```{r}
+# libraries
+library(tidyverse)
+library(skimr)
+library(mars)
+library(patchwork)
+library(broom)
+library(corrplot)
+library(caret)
+library(lmtest)
+library(sandwich)
+library(MASS)
+
+# import data setting seed for reproducibility
+set.seed(2451)
+
+insurance_data<- read.csv("insurance.csv")
+dim(insurance_data)
+```
+
+```{r}
+str(insurance_data)
+```
+
+```{r}
+insurance_data$sex    <- as.factor(insurance_data$sex)
+insurance_data$smoker <- as.factor(insurance_data$smoker)
+insurance_data$region <- as.factor(insurance_data$region)
+
+```
+
+```{r}
+summary(insurance_data)
+```
+
+```{r}
+skim(insurance_data) 
+```
+
+```{r}
+age_hist <- hist(insurance_data$age)
+bmi_hist <- hist(insurance_data$bmi,10)
+kids_hist <- hist(insurance_data$children,6)
+response_hist <- hist(insurance_data$charges)
+```
+
+```{r}
+num_vars <- insurance_data[, c("age", "bmi", "children", "charges")]
+
+cor_matrix <- cor(num_vars)
+
+png("plots/correlation_matrix.png", width = 800, height = 700)
+
+corrplot(
+  cor_matrix,
+  method = "color",
+  type = "upper",
+  addCoef.col = "black",
+  tl.col = "black",
+  tl.srt = 45,
+  title = "Correlation of Numerical variables"
+)
+
+dev.off()
+
+
+```
+
+```{r}
+png("plots/boxplot_charges.png", width = 800, height = 600)
+
+boxplot(
+  insurance_data$charges,
+  main = "Boxplot of Medical Insurance Charges",
+  ylab = "Charges"
+)
+
+dev.off()
+
+```
+
+```{r}
+png("plots/boxplot_age.png", width = 800, height = 600)
+
+boxplot(
+  insurance_data$age,
+  main = "Boxplot of patient age",
+  ylab = "Patient Age"
+)
+
+dev.off()
+
+```
+
+```{r}
+png("plots/boxplot_children.png", width = 800, height = 600)
+
+boxplot(
+  insurance_data$children,
+  main = "Boxplot of patients with children",
+  ylab = "Children"
+)
+
+dev.off()
+
+```
+
+```{r}
+png("plots/boxplot_bmi.png", width = 800, height = 600)
+
+boxplot(
+  insurance_data$bmi,
+  main = "Boxplot ofpatient Body Mass Index",
+  ylab = "BMI"
+)
+
+dev.off()
+
+```
+
+```{r}
+png("plots/scatter_bmi_charges.png", width = 800, height = 600)
+
+insurance_data |>
+  ggplot(aes(x = bmi, y = charges, color = smoker, )) +
+  geom_point(alpha = 0.4) +
+  labs(
+    title = "Medical Charges vs BMI by Smoking Status",
+    x = "BMI",
+    y = "Charges"
+  )
+
+dev.off()
+
+```
+
+```{r}
+png("plots/scatter_age_charges.png", width = 800, height = 600)
+
+insurance_data |>
+  ggplot(aes(x = age, y = charges, color = smoker, )) +
+  geom_point(alpha = 0.4) +
+  labs(
+    title = "Medical Charges vs Age by Smoking Status",
+    x = "Patient Age",
+    y = "Charges"
+  )
+
+dev.off()
+```
+
+```{r}
+png("plots/scatter_children_charges.png", width = 800, height = 600)
+
+insurance_data |>
+  ggplot(aes(x = children, y = charges, color = smoker, )) +
+  geom_point(alpha = 0.4) +
+  labs(
+    title = "Medical Charges vs children by Smoking Status",
+    x = "Children",
+    y = "Charges"
+  )
+
+dev.off()
+```
+
+```{r}
+insurance_data$has_children <- factor(
+  ifelse(insurance_data$children > 0, "Yes", "No")
+)
+
+
+```
+
+```{r}
+data_clean<-insurance_data|>
+  select(-children)
+```
+
+```{r}
+n <- nrow(data_clean)
+train_index <- sample(1:n, size = 0.7 * n)
+
+train_data <- data_clean[train_index, ]
+test_data  <- data_clean[-train_index, ]
+```
+
+```{r}
+nrow(train_data) / nrow(data_clean)
+nrow(test_data) / nrow(data_clean)
+
+```
+
+## Modeling
+
+```{r}
+cv_control <- trainControl(
+  method = "cv",
+  number = 10
+)
+```
+
+```{r}
+cv_model_1 <- train(
+  charges ~ age + sex + bmi + has_children + smoker + region,
+  data = data_clean,
+  method = "lm",
+  trControl = cv_control
+)
+
+```
+
+```{r}
+cv_model_1
+
+```
+
+```{r}
+model_linear <- lm(
+  charges ~ .,
+  data = data_clean
+)
+
+summary(model_linear)
+confint(model_linear)
+
+```
+
+```{r}
+model_interaction <- lm(
+  charges ~ bmi * smoker + age + has_children,
+  data = data_clean
+)
+
+summary(model_interaction)
+confint(model_interaction)
+
+```
+
+```{r}
+png("plots/interaction_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(model_interaction)
+dev.off()
+
+```
+
+```{r}
+png("plots/linear_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(model_linear)
+dev.off()
+```
+
+```{r}
+logtransformed_linear_model<-lm(
+  log(charges) ~ .,
+  data = data_clean
+)
+
+summary(logtransformed_linear_model)
+confint(logtransformed_linear_model)
+```
+
+```{r}
+png("plots/log_linear_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(logtransformed_linear_model)
+dev.off()
+```
+
+```{r}
+log_interaction_lm<-lm(
+  sqrt(charges) ~ (bmi * smoker + age)  ,
+  data = data_clean
+)
+
+summary(log_interaction_lm)
+confint(log_interaction_lm)
+```
+
+```{r}
+png("plots/squareroot_interaction_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(log_interaction_lm)
+dev.off()
+```
+
+```{r}
+model_gamma <- glm(
+  charges ~ bmi * smoker + age ,
+  data = data_clean,
+  family = Gamma(link = "log")
+)
+
+```
+
+```{r}
+summary(model_gamma)
+```
+
+```{r}
+png("plots/glm_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(model_gamma
+     )
+dev.off()
+```
+
+```{r}
+model_gamma_sqrt <- glm(
+  sqrt(charges) ~ bmi * smoker + age ,
+  data = data_clean,
+  family = Gamma(link = "log")
+)
+
+```
+
+```{r}
+summary(model_gamma_sqrt)
+png("plots/sqrt_glm_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(model_gamma_sqrt
+     )
+dev.off()
+```
+
+```{r}
+model_gamma_full<- glm(charges~ .,data = data_clean,
+  family = Gamma(link = "log") )
+summary(model_gamma_full)
+```
+
+\
+
+\
+
+```{r}
+model_robust <- rlm(
+  charges ~ bmi * smoker + age ,
+  data = data_clean
+)
+summary(model_robust)
+```
+
+```{r}
+png("plots/robust_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(model_robust)
+dev.off()
+```
+
+```{r}
+model_gamma_full_int <- glm(
+  charges ~ smoker * (age + bmi + has_children + sex + region),
+  data = data_clean,
+  family = Gamma(link = "log")
+)
+
+summary(model_gamma_full_int)
+```
+
+## Model Selction
+
+I will be selecting the Gamma Generalized Regression Model to make predictions with log link loss function.
+
+```{r}
+model_gamma_final <- glm(
+  charges ~ age + bmi + has_children + sex + region +
+            smoker +
+            smoker:bmi +
+            smoker:age +
+            smoker:has_children,
+  data = data_clean,
+  family = Gamma(link = "log")
+)
+
+summary(model_gamma_final)
+AIC(model_gamma_final)
+```
+
+```{r}
+png("plots/gamma_final_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(model_gamma_final)
+dev.off()
+```
+
+```{r}
+pred_test <- predict(
+  model_gamma_final,
+  newdata = test_data,
+  type = "response"
+)
+
+```
+
+```{r}
+rmse <- sqrt(mean((test_data$charges - pred_test)^2))
+mae  <- mean(abs(test_data$charges - pred_test))
+
+rmse
+mae
+
+```
+
+```{r}
+png("plots/gamma_pred_vs_actual.png", width = 800, height = 600)
+
+plot(
+  test_data$charges,
+  pred_test,
+  xlab = "Actual Charges",
+  ylab = "Predicted Charges",
+  main = "Gamma GLM: Predicted vs Actual (Test Set)"
+)
+
+abline(0, 1, col = "red", lwd = 2)
+dev.off()
+
+```
+
+ggplot(data_clean(aes(y= charges)))+
+
+geom_histogram()
+
+```{r}
+# Barplots of Num variables:
+png("plots/distribution_target.png", width = 800, height = 600)
+
+ggplot(data_clean, aes(x = charges)) +
+  geom_histogram(bins = 50) +
+  
+  
+  labs(
+    title = "Distribution of Medical Insurance Charges",
+    x = "Charges",
+    y = "Count"
+  )
+
+
+
+dev.off()
+
+```
+
+```{r}
+png("plots/distribution_age.png", width = 800, height = 600)
+
+ggplot(data_clean, aes(x = age)) +
+  geom_histogram(bins = 50) +
+  
+  
+  labs(
+    title = "Distribution of Age",
+    x = "Age",
+    y = "Count"
+  )
+
+
+
+dev.off()
+png("plots/distribution_Bmi.png", width = 800, height = 600)
+
+ggplot(data_clean, aes(x = bmi)) +
+  geom_histogram(bins = 50) +
+  
+  
+  labs(
+    title = "Distribution ofBody Mass Index",
+    x = "BMI",
+    y = "Count"
+  )
+
+
+
+dev.off()
+```
+
+```{r}
+# final visualization pedicttion grid with model:
+bmi_seq <- seq(
+  min(data_clean$bmi),
+  max(data_clean$bmi),
+  length.out = 100
+)
+
+pred_grid <- expand.grid(
+  bmi = bmi_seq,
+  smoker = factor(c("no", "yes"), levels = levels(data_clean$smoker)),
+  age = mean(data_clean$age),
+  has_children = factor("No", levels = levels(data_clean$has_children)),
+  sex = factor("female", levels = levels(data_clean$sex)),
+  region = factor("northeast", levels = levels(data_clean$region))
+)
+
+pred_grid$pred_charges <- predict(
+  model_gamma_final,
+  newdata = pred_grid,
+  type = "response"
+)
+ggplot(data_clean, aes(x = bmi, y = charges, color = smoker)) +
+  geom_point(alpha = 0.4) +
+  geom_line(
+    data = pred_grid,
+    aes(x = bmi, y = pred_charges, color = smoker),
+    linewidth = 1.5
+  ) +
+  labs(
+    title = "Medical Charges vs BMI by Smoking Status",
+    x = "BMI",
+    y = "Medical Charges"
+  ) +
+  theme_minimal()
+ggsave(
+  "plots/bmi_charges_gamma_glm_fit.png",
+  width = 8,
+  height = 6
+)
+
+```
+
+```{r}
+ggplot(data_clean, aes(x = age, y = charges, color = smoker)) +
+  geom_point(alpha = 0.4) +
+  geom_line(
+    data = pred_grid,
+    aes(x = bmi, y = pred_charges, color = smoker),
+    linewidth = 1.5
+  ) +
+  labs(
+    title = "Medical Charges vs AGE by Smoking Status",
+    x = "AGE",
+    y = "Medical Charges"
+  ) +
+  theme_minimal()
+ggsave(
+  "plots/age_charges_gamma_glm_fit.png",
+  width = 8,
+  height = 6
+)
+
+saveRDS(model_gamma_final, "models/model_gamma_final.rds")
+saveRDS(model_interaction, "models/model_interaction.rds")
+saveRDS(model_linear, "models/model_linear.rds")
+saveRDS(log_interaction_lm, "models/log_interaction_lm.rds")
+
+
+
+```
+

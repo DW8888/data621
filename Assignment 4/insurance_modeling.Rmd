@@ -528,7 +528,7 @@ The dataset exhibits a clear class imbalance: only about one in four policyholde
 
 ## Modeling
 
-###  Logistic models
+### Logistic models
 
 ```{r modeling1, include=FALSE, echo=FALSE}
 y_flag <- train$TARGET_FLAG
