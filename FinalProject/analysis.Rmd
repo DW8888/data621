@@ -554,4 +554,16 @@ saveRDS(log_interaction_lm, "models/log_interaction_lm.rds")
 
 
 ```
+```{r}
+# psuedo R **2
+pseudo_r2 <- 1 - (
+  model_gamma_final$deviance /
+  model_gamma_final$null.deviance
+)
+
+pseudo_r2
+
+
+
+```
 
