@@ -1,0 +1,108 @@
+---
+title: "DATA 621 Blog 2"
+subtitle: "Pearson's Correlation Coefficient"
+author: "Darwhin Gomez"
+format: html
+code-fold: true
+toc: true
+editor: visual
+---
+
+## The Pearson Correlation Test
+
+In statistical analysis, understanding the relationship between two continuous variables is often just as important as understanding their individual distributions. One of the most commonly used measures for assessing this relationship is the Pearson correlation coefficient, which quantifies the strength and direction of a linear association between two variables.
+
+The Pearson correlation coefficient, typically denoted as *r*, ranges from –1 to +1. A value close to +1 indicates a strong positive linear relationship, meaning that as one variable increases, the other tends to increase as well. A value close to –1 indicates a strong negative linear relationship, while a value near 0 suggests little to no linear association.
+
+Beyond measuring correlation, the Pearson correlation test also provides a formal hypothesis test. The null hypothesis states that there is no linear relationship between the two variables (*r = 0*), while the alternative hypothesis suggests a non-zero linear association. The resulting p-value indicates whether the observed correlation is statistically significant, given the sample size.
+
+It is important to note that Pearson’s correlation assumes linearity, continuous variables, and approximate normality, and it is sensitive to outliers. As a result, correlation analysis should always be paired with visual tools such as scatterplots to ensure the relationship is both meaningful and appropriately modeled.
+
+**Pearson Correlation Coefficient**
+
+Given paired observations (x1,y1),(x2,y2),…,(xn,yn)(x_1, y_1), (x_2, y_2), \ldots, (x_n, y_n)(x1​,y1​),(x2​,y2​),…,(xn​,yn​), the [Pearson correlation coefficient](#0) $r$ is defined as:
+
+$$
+ r = \frac{\sum_{i=1}^{n} (x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^{n} (x_i - \bar{x})^2}\sqrt{\sum_{i=1}^{n} (y_i - \bar{y})^2}} 
+$$
+
+where:
+
+$\bar{x}$ is the sample mean of $x$ and $\bar{y}$ is the sample mean of $y$
+
+The Pearson correlation test evaluates the hypotheses
+
+$$
+H_0: \rho = 0
+$$
+
+$$
+H_A: \rho \neq 0
+$$
+
+where ( $p$ ) is the population correlation coefficient. The test statistic follows a ( t )-distribution and is given by
+
+$$
+t = r \sqrt{\frac{n - 2}{1 - r^2}}
+$$
+
+with ( $n - 2$ ) degrees of freedom.
+
+## R Example
+
+Pearson’s correlation provides a rigorous statistical method for assessing whether a linear relationship exists between two variables and is often applied after initial insights are gained during exploratory data analysis (EDA) We cam follow an R workflow
+
+```{r,echo=FALSE}
+# Load dataset
+library(MASS)
+library(ggplot2)
+data(Boston)
+
+# Examine correlation between crime rate and median home value
+
+
+```
+
+1.  Hints of a meaning full linear relationship
+
+    ```{r, eval=TRUE}
+    ggplot(Boston, aes(x = crim, y = medv)) +
+      geom_point(alpha = 0.4, color = "blue") +
+      geom_smooth(method = lm, col="red")+
+      labs(
+        x = "Per Capita Crime Rate",
+        y = "Median Home Value",
+        title = "Crime Rate vs Median Home Value"
+      )
+
+    ```
+
+    Sometimes a plot of our variables will nudge toward thinking of linear correlation.
+
+<!-- -->
+
+2.  We can then check the correlation function for a quick calculation between our variables.
+
+    ```{r}
+    cor(Boston$crim, Boston$medv)
+    ```
+
+<!-- -->
+
+3.  If we feel we need staticaly rigorous analysis on our correlations we can then conduct the pearson test like below.
+
+    ```{r}
+
+    # Pearson correlation test
+    cor.test(Boston$crim, Boston$medv, method = "pearson")
+    ```
+
+<!-- -->
+
+4.  Interpreting the results:
+
+    The Pearson correlation test indicates a statistically significant negative linear relationship between per capita crime rate and median home value. The estimated correlation coefficient is ( r = -0.39 ), suggesting a moderate inverse association, where higher crime rates are associated with lower median home values. The test statistic (( t = -9.46 ), ( df = 504 )) and extremely small p-value (( p \< 2.2 $e^{-16}$ )) provide strong evidence against the null hypothesis of no linear relationship. The 95% confidence interval (\[-0.46, -0.31\]) does not include zero, further confirming that the relationship is statistically significant.
+
+## Conclusion
+
+Overall, Pearson’s correlation coefficient and its associated hypothesis test are highly effective and widely used statistical tools. They provide a rigorous framework for evaluating linear relationships between variables and are essential methods for developing proficiency in both the theory and practice of statistical analysis. However, it is important to recognize that while Pearson’s correlation can identify statistically significant linear relationships, it does not establish causation; meaningful analysis should therefore extend beyond correlation when interpreting relationships between variables.

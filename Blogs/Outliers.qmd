@@ -1,0 +1,87 @@
+---
+title: "Data 621 Blog 1"
+subtitle: "Outliers"
+author: "Darwhin Gomez"
+format: pdf
+editor: visual
+---
+
+```{r include=TRUE,echo=FALSE}
+library(MASS)
+data(Boston)
+
+
+```
+
+##  Three Visual methods for identifying Outliers 
+
+In statistical analysis and modeling, the primary goal is to understand a dataset in order to gain insights and, in many cases, make predictions based on the information it contains. However, as one explores data more deeply, it often becomes apparent that some observations differ substantially from the rest. These observations are known as **outliers**.
+
+An outlier is a data point that deviates markedly from other records in a dataset, either by being unusually large or unusually small relative to the majority of observations ([GeeksforGeeks](https://www.geeksforgeeks.org/maths/outlier/)). Outliers can arise for many reasons, including data entry errors, measurement issues, or genuine but rare events. Because of their extreme nature, outliers deserve careful attention during the modeling process.
+
+\
+\
+
+### Box Plot
+
+Several statistical methods exist for detecting outliers, and one of the most accessible tools available in R is the **box plot**. A box plot summarizes a continuous variable by displaying its median and interquartile range (IQR), which represents the middle 50% of the data. The “whiskers” extend to observations within 1.5 times the IQR from the first and third quartiles. Any data points that fall beyond these limits are flagged as potential outliers.
+
+Box plots provide a quick and intuitive visualization that helps analysts identify extreme values early in the exploratory data analysis process. This makes them especially useful for diagnosing potential issues in the data before fitting statistical models or drawing conclusions.
+
+```{r, }
+bos_crime_op<-boxplot(Boston$crim, main = "Crime Rate Outliers")
+```
+
+### Density Plot
+
+A density plot or histogram can also be helpful in visualizing outliers in data and is fairly simple to create using imposed interquartile range thresholds. By overlaying cutoff lines or shading extreme values, these plots make it easier to see how potential outliers relate to the overall shape and tails of the distribution, providing additional context beyond summary statistics alone.
+
+```{r, include=TRUE}
+x <- Boston$crim
+
+# Compute IQR thresholds
+Q1 <- quantile(x, 0.25)
+Q3 <- quantile(x, 0.75)
+IQR <- Q3 - Q1
+
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Histogram of full distribution
+plot(density(
+  Boston$crim,
+))
+
+# Add cutoff lines
+abline(v = lower_bound, lwd = 2, lty = 2)
+abline(v = upper_bound, lwd = 2, lty = 2)
+
+# Overlay shaded outliers
+
+```
+
+### Q-Q Plot
+
+Finally, another simple method for detecting outliers is the Q–Q plot, which compares the quantiles of the observed data to those of a theoretical distribution (typically normal). Observations that deviate substantially from the reference line particularly in the tails should be examined as potential outliers.
+
+\
+
+```{r}
+qqnorm(Boston$crim)
+qqline(Boston$crim, col= "red")
+
+```
+
+### Anomolies
+
+It is important to recognize that in some analyses, we actively seek extreme outliers particularly in cases where we want to identify observations that break established patterns in a significant way. A common example of this is fraud detection, where anomalous transactions may indicate suspicious or fraudulent behavior. In such contexts, anomaly detection techniques are used to flag observations that deviate sharply from expected patterns rather than treating them as noise to be removed.
+
+![The image above shows data analyzed using an Isolation Forest to identify observations that differ significantly from the rest of the dataset. Using a contamination threshold of 0.1%, the model flags only the most extreme anomalies as potential outliers. The full analysis and implementation can be found in my notebook.](images/clipboard-4072012454.png){alt="The above image is data that was analyszed using an Isolation forrest to detect points that were significantly different than the others, with a threshold of 0.1%you can find my noteook for this here." fig-align="center" width="618"}
+
+[Link to notebook](https://github.com/DW8888/Data602/blob/main/Bank%20Transaction%20Fraud/isolationf_anomoly_detection.ipynb)
+
+### Final thoughts
+
+Outliers can be detected simple visualizations, like using box plots, histograms or density plots, and Q–Q plots, each offering a simple visual perspective on extreme observations. Box plots use interquartile range thresholds, while distribution plots and Q–Q plots reveal how outliers appear in the tails of the data. These methods help assess data quality and modeling assumptions.
+
+In some applications, such as fraud or anomaly detection, extreme outliers are not noise but the primary signals of interest.

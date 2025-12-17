@@ -1,0 +1,106 @@
+---
+title: "DATA 621 Blog 3"
+subtitle: "Cross Validation R examples (caret)"
+author: "Darwhin Gomez"
+format: html
+code-fold: true
+toc: true
+editor: visual
+---
+
+```{r, include=FALSE, echo=FALSE}
+library(caret)
+# set a seed otherwise your folds will change everytime you run your code
+set.seed(123)
+data(mtcars)
+```
+
+## Cross-Validation
+
+In statistical modeling and machine learning, evaluating how well a model generalizes to unseen data is just as important as achieving strong performance on the training dataset. A model that fits the training data extremely well may fail to perform adequately on new observations, a problem commonly known as overfitting. Cross-validation provides a systematic framework for estimating out-of-sample performance and reducing this risk.
+
+Cross-validation works by repeatedly splitting the available data into training and validation subsets. The model is trained on one portion of the data and evaluated on the remaining portion, allowing performance to be assessed on data not used during model fitting. By repeating this process across multiple splits, cross-validation produces a more reliable estimate of a model’s predictive ability than a single train–test split.
+
+One of the most widely used approaches is k-fold cross-validation, where the dataset is divided into *k* roughly equal folds. The model is trained *k* times, each time leaving out one fold for validation and using the remaining *k − 1* folds for training. Performance metrics are then averaged across all folds, reducing variability due to random data partitioning.
+
+Cross-validation is especially valuable when comparing multiple models or tuning hyperparameters, as it allows competing approaches to be evaluated under consistent conditions. By focusing on generalization rather than in-sample fit, cross-validation helps ensure that selected models are robust, interpretable, and better suited for real-world deployment.
+
+A helpful way to think about cross-validation is through the analogy of a student preparing for a final exam. If the student only practices with one set of sample questions , they may simply memorize those questions rather than truly understand the material,an example of overfitting. Cross-validation is like having multiple practice exams: the student studies from most of them and tests themselves on the remaining one, rotating through all sets. By the end, the student has been evaluated on all material, ensuring genuine understanding rather than success or failure due to familiarity with a single set of questions.\
+
+### Caret
+
+The `caret` package is a powerful and widely used tool that provides a unified interface for implementing a broad range of statistical and machine learning algorithms. One of its key strengths is the ability to easily incorporate cross-validation and other resampling techniques into modeling workflows through a consistent and flexible framework. By standardizing model training, tuning, and evaluation, `caret` simplifies the process of comparing models and assessing their generalization performance.
+
+\
+
+```{r}
+
+
+# Define cross-validation method
+# number is k paramter or folds
+cv_control <- trainControl(method = "cv", number = 5)
+
+# Train model with 5-fold CV passing  on  training control method, to the model fucntion
+cv_model_lm <- train(
+  mpg ~ wt,
+  data = mtcars,
+  method = "lm",
+  trControl = cv_control
+)
+# summraise the results
+summary(cv_model_lm)
+
+
+```
+
+```{r}
+cv_model_lm
+```
+
+#### Regression
+
+The `cv_model` output summarizes the results of fitting a linear regression model using 5-fold cross-validation. It reports performance metrics such as RMSE, $R^2$, and MAE averaged across all folds, providing an estimate of how well the model is expected to perform on unseen data. The resampling information confirms that the dataset was repeatedly partitioned into training and validation sets, ensuring that model evaluation is not dependent on a single split.
+
+The `summary(cv_model)` output presents the final fitted model using the full dataset, including coefficient estimates, standard errors, and significance tests. While this summary reflects the in-sample fit, the cross-validated metrics from `cv_model` offer a more reliable assessment of generalization performance. Together, these outputs allow both model interpretation and robust evaluation of predictive accuracy.
+
+The difference in $R^2$ values arises because they measure performance under different conditions. The $R^2$ reported in `summary(cv_model)` reflects **in-sample fit**, indicating how well the model explains variability in the data it was trained on. In contrast, the cross-validated $R^2$ reported by `cv_model` is an **out-of-sample estimate**, averaged across validation folds, and is typically lower because it evaluates the model on unseen data. This gap is expected and highlights the importance of cross-validation in providing a more realistic measure of generalization performance.
+
+In this case, the cross-validated $R^2$ (0.79) is slightly higher than the in-sample $R^2$ from the final model (0.75). This can occur due to **sampling variability**, especially with a relatively small dataset, where different training folds may better capture the underlying linear relationship than the full dataset does on average. Because cross-validated $R^2$ is computed as an average across multiple validation splits, it can occasionally exceed the single in-sample estimate without indicating overfitting or model error.
+
+#### Classification
+
+Cross validation can be used a variety of classifications provided within the `caret` package.
+
+```{r}
+
+data(iris)
+
+# Define 5-fold cross-validation
+cv_control <- trainControl(
+  method = "cv",
+  number = 5
+)
+
+# Train classification model
+cv_model_cat <- train(
+  Species ~ Petal.Length + Petal.Width,
+  data = iris,
+  method = "rf",
+  trControl = cv_control
+)
+
+cv_model_cat
+
+```
+
+```{r}
+cv_model_cat$finalModel
+```
+
+Calling the resampled model object returns aggregated performance metrics averaged across all trained models from the cross-validation process. These results provide insight into overall model performance, while the final fitted model can be examined separately for coefficient estimates and interpretation. The `caret` [package](https://cran.r-project.org/web/packages/caret/vignettes/caret.html) offers thorough documentation that explains how to access and interpret the various components stored within a trained model object.
+
+## Conclusion
+
+Cross-validation is an essential technique for assessing how well a model generalizes beyond the training data and for guarding against overfitting. By evaluating performance across multiple resampled subsets, it provides a more reliable estimate of out-of-sample behavior than a single train–test split.
+
+The `caret` package makes implementing cross-validation straightforward by offering a consistent and intuitive interface across many modeling approaches. This combination of methodological rigor and practical simplicity makes cross-validation with `caret` a valuable tool in modern statistical modeling workflows in R.

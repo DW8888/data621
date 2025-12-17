@@ -1,0 +1,152 @@
+---
+title: "DATA 621 Blog 5 " 
+subtitle: "Text Embedding" 
+author: "Darwhin Gomez" 
+format: html 
+code-fold: true 
+toc: true 
+editor: visual
+---
+
+## Text as numbers
+
+Recently, I have begun working with natural language processing (NLP) and text generation and semantic matching. Through this work, I have gained a better understanding of how text can be represented mathematically. Because most statistical and machine learning models require numerical inputs, raw text must first be transformed into a numerical form before it can be analyzed or used for prediction.
+
+This form of data is known as a text embedding. Text embeddings are numerical representations of language that capture meaning by encoding text as vectors. These vectors have both magnitude and direction, which allows models to measure semantic similarity between pieces of text based on their position in vector space.
+
+Recently, I have been working with OpenAI’s Mini Embeddings model, an economical option for converting text into embeddings. After generating these vectors, I store them in a specialized database known as a vector database—in my case, a PostgreSQL database with vector support. This setup allows me to compute a variety of useful operations, such as measuring how closely two documents match semantically based on their embeddings, or classifying documents once similarity scores exceed a defined threshold.
+
+As I continue learning and applying these techniques, I am also becoming more comfortable discussing and reasoning about how embeddings work in practice, and how they can be used to extract meaningful insights from unstructured text.\
+**\* For the purposes of this blog I simply imported my data from a csv after i connected through the console.**
+
+```{r, include=FALSE}
+library(DBI)
+library(RPostgres)
+library(tidyverse)
+library(factoextra)
+library(uwot) 
+```
+
+```{r}
+artifacts_df2<-read.csv2("artifacts_table.csv")
+
+str(artifacts_df2)
+
+```
+
+\
+I connected to PostgreSQL and imported the table containing text embeddings into R as a data frame. When retrieved in R, pgvector embeddings are returned as character strings rather than numeric vectors. As a result, the embeddings must be parsed and converted back into numeric vectors before they can be used for downstream analysis in R.\
+
+I will tackle this by creating a parser function:
+
+\
+
+```{r}
+parse_pgvector <- function(x) {
+  # 1. Remove curly braces AND any hidden driver tags/whitespace
+  # This targets '{' and '}' specifically
+  clean_s <- gsub("[{}]", "", x)
+  
+  # 2. Split by comma
+  vals <- unlist(strsplit(clean_s, ","))
+  
+  # 3. Trim whitespace (just in case) and convert to numeric
+  as.numeric(trimws(vals))
+}
+
+
+
+
+# Application to the df
+artifacts_df2$embedding <- lapply(artifacts_df2$embedding, parse_pgvector)
+
+```
+
+The parser strips the brackets and any white space leaving us with clean lists of numbers.
+
+```{r}
+str(artifacts_df2)
+
+```
+
+Notice that
+
+```{r}
+# Convert the list of 763 vectors into a 763 x 1536 Matrix
+embedding_matrix <- do.call(rbind, artifacts_df2$embedding)
+
+# Check the dimensions (Should be 763 1536)
+dim(embedding_matrix)
+```
+
+The Final Step: Transforming Lists to Matrices
+
+The 1,536 dimensions are significant because this is the specific output size of the OpenAI `text-embedding-3-small` model. Once the embeddings are parsed into numeric vectors, they exist in R as a list-column. While this format is excellent for storage within a data frame, most high-performance scientific libraries—such as those for Principal Component Analysis (PCA), UMAP, or K-Means Clustering—require data to be in a contiguous rectangular format.
+
+By using `do.call(rbind, ...)`, we "stack" these 763 individual vectors into a single 763 × 1,536 Numeric Matrix. In this matrix, each row represents a unique document (artifact) and each column represents one of the 1,536 semantic dimensions. This transformation is the "launchpad" for our analysis: it enables vectorized operations, allowing R to calculate similarity scores or project the data into 2D space thousands of times faster than iterating through a list.
+
+##  Dimension reduction and Visualizing 
+
+The final here step was to visualize the structure of our 1,536-dimensional semantic space. After determining the optimal number of clusters to be four using the Elbow Method, we applied UMAP to project our data down to a 2D plane while preserving essential local relationships. We then layered a K-means cluster assignment onto this visualization.
+
+The resulting plot effectively maps our text artifacts by meaning. Points of the same color are semantically similar (e.g., all likely resume descriptions), while distinct color groupings indicate different underlying themes or document types. This visualization serves as a powerful diagnostic tool, confirming that our OpenAI embeddings accurately capture meaningful distinctions in the data and providing immediate visual identification of primary content groups and potential outliers.
+
+This interpretation shows how UMAP and K-means clustering work together to visualize and group high-dimensional data, in this case, text embeddings. The UMAP projection reduces the complexity while the K-means clustering assigns data points to distinct groups based on their similarity, making the structure of the data understandable in a visual way.
+
+```{r}
+# High-performance UMAP implementation
+# reducing to 2 dimensions
+set.seed(123)
+umap_results <- umap(embedding_matrix, n_components = 2)
+
+# plotting an elbow plot using WSS
+
+fviz_nbclust(embedding_matrix, kmeans, method = "wss") +
+  geom_vline(xintercept = 4, linetype = 2) + 
+
+  labs(subtitle = "Optimal Number of Clusters (Elbow Method)")
+
+# plot with n cluster from above
+clusters <- kmeans(embedding_matrix, centers = 4)
+
+# 3. Create a data frame for visualization
+plot_df <- data.frame(
+  x = umap_results[,1],
+  y = umap_results[,2],
+  cluster = as.factor(clusters$cluster),
+  name = artifacts_df2$name
+  
+)
+
+# 4. Plot the results
+ggplot(plot_df, aes(x = x, y = y, color = cluster)) +
+  geom_point(alpha = 0.3) +
+  theme_minimal() +
+  labs(
+  title = "Semantic Clusters of Job Artifacts",
+       
+  subtitle = "Reduced from 1536 OpenAI dimensions to 2D using UMAP",
+    x = "UMAP 1", y = "UMAP 2")
+
+
+
+```
+
+```{r}
+ggplot(plot_df, aes(x = cluster)) +
+  geom_bar(fill = "steelblue") +
+    theme_minimal() +
+  labs(     
+  title = "Frequency Distribution of Semantic Clusters (k=4)",
+  subtitle = "Count of Job Artifacts per Cluster",    
+  x = "Cluster ID",     y = "Count of Artifacts"   )
+```
+
+\
+The final plot is a simple tally chart or histogram of the count of artifacts in each cluster.\
+
+## Going forward
+
+Moving forward, the insights gained from this exploratory data analysis serve as the foundation for formal hypothesis testing. In the very near future, I will be implementing these steps and further analyses on the rich dataset curated from **Alfred**, my job search agent application. Alfred leverages the embeddings discussed in this blog post to curate a robust knowledge base for its content-generating agents. A deeper understanding of how these embeddings are representing the texts within my documents is crucial; it will enable me to articulate my findings more clearly and rigorously as I evaluate Alfred's performance and impact.
+
+[https://github.com/dw8888/alfred](https://github.com/DW8888/alfred/blob/master/README.md)

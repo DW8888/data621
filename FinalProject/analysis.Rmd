@@ -180,7 +180,7 @@ insurance_data$has_children <- factor(
 
 ```{r}
 data_clean<-insurance_data|>
-  select(-children)
+  dplyr::select(-children)
 ```
 
 ```{r}
@@ -250,6 +250,17 @@ plot(model_interaction)
 dev.off()
 
 ```
+
+```{r}
+lm_cv <- cv_model_1$finalModel
+
+png("plots/cv_model_diagnostics.png", width = 1000, height = 800)
+par(mfrow = c(2,2))
+plot(lm_cv)
+dev.off()
+```
+
+lm_cv \<- cv_model_1\$finalModel
 
 ```{r}
 png("plots/linear_model_diagnostics.png", width = 1000, height = 800)
@@ -366,7 +377,7 @@ model_gamma_full_int <- glm(
 summary(model_gamma_full_int)
 ```
 
-## Model Selction
+## Model Selection
 
 I will be selecting the Gamma Generalized Regression Model to make predictions with log link loss function.
 
@@ -425,10 +436,6 @@ abline(0, 1, col = "red", lwd = 2)
 dev.off()
 
 ```
-
-ggplot(data_clean(aes(y= charges)))+
-
-geom_histogram()
 
 ```{r}
 # Barplots of Num variables:
@@ -554,6 +561,7 @@ saveRDS(log_interaction_lm, "models/log_interaction_lm.rds")
 
 
 ```
+
 ```{r}
 # psuedo R **2
 pseudo_r2 <- 1 - (
@@ -567,3 +575,73 @@ pseudo_r2
 
 ```
 
+```{r}
+pred_test |>
+  write.csv2("predictions.csv", row.names = FALSE)
+```
+
+```{r}
+library(grid)
+library(gridExtra)
+library(png)
+# imges for slides
+bpbmi <- rasterGrob(readPNG("plots/boxplot_bmi.png"), interpolate = TRUE)
+bpage <- rasterGrob(readPNG("plots/boxplot_age.png"), interpolate = TRUE)
+bpchildren <- rasterGrob(readPNG("plots/boxplot_children.png"), interpolate = TRUE)
+bpcharges <- rasterGrob(readPNG("plots/boxplot_charges.png"), interpolate = TRUE)
+
+```
+
+```{r}
+#combining and saving plots
+cbplots<-grid.arrange(bpbmi,bpage,bpchildren,bpcharges)
+
+png("plots/combined_figure.png", width = 1200, height = 1000)
+grid.arrange(bpbmi,bpage,bpchildren,bpcharges,ncol = 2)
+dev.off()
+```
+
+```{r}
+# patching distris
+disbmi <- rasterGrob(readPNG("plots/distribution_Bmi.png"), interpolate = TRUE)
+disage <- rasterGrob(readPNG("plots/distribution_age.png"), interpolate = TRUE)
+discharges <- rasterGrob(readPNG("plots/distribution_target.png"), interpolate = TRUE)
+corplt<- rasterGrob(readPNG("plots/correlation_matrix.png"), interpolate = TRUE)
+```
+
+```{r}
+png("plots/combined_dis.png", width = 1200, height = 1000)
+grid.arrange(disbmi,disage,discharges,corplt,ncol = 2)
+dev.off()
+
+```
+
+```{r}
+
+cat_vars <- names(data_clean)[sapply(data_clean, is.factor)]
+
+for (v in cat_vars) {
+  cat("\n==============================\n")
+  cat("Counts for:", v, "\n")
+  print(table(data_clean[[v]]))
+}
+
+```
+
+```{r}
+library(quantreg)
+```
+
+```{r}
+quantile_model<- rq(charges ~., tau = 0.75,data_clean)
+```
+
+```{r}
+summary(quantile_model)
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(quantile_model)
+
+```

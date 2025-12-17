@@ -1,0 +1,65 @@
+---
+title: "DATA 621 Blog 4"
+subtitle: "Regression with Interactions"
+author: "Darwhin Gomez"
+format: html
+code-fold: true
+toc: true
+editor: visual
+---
+
+## Interaction
+
+Regression is a statistical method used to model and predict an outcome variable based on one or more explanatory variables. In linear regression, the relationship is assumed to be linear and can be expressed as the value of the response variable $y$ as a function of a predictor $x$ and an intercept. Formally, this can be written:\
+
+$$
+y=β0​+β1​x+ε
+$$
+
+where β0 is the intercept, β1​ represents the effect of $x$ on $y$, and ε captures random error.
+
+While multiple predictors can be included in a regression model, visualization in two dimensions requires holding other variables constant or grouping by categorical predictors. Interaction plots allow us to visually assess whether the relationship between a predictor and the outcome differs across levels of another variable.\
+
+$$y = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_3 (x_1 \times x_2) + \epsilon$$
+
+```{r,include=FALSE}
+library(tidyverse)
+data("mtcars")
+
+
+```
+
+```{r}
+
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point()+
+  geom_smooth(method = glm)
+
+
+```
+
+Here, our regression model predicts miles per gallon (mpg) as a function of vehicle weight (wt). The fitted line indicates that as vehicle weight increases, the expected fuel efficiency decreases.
+
+```{r}
+cars_lm<-glm(mtcars$mpg~ mtcars$wt,data =mtcars )
+summary(cars_lm)
+```
+
+Intuitively, vehicles with a greater number of cylinders tend to have higher energy demands. Allowing cylinder count to interact with vehicle weight captures the idea that the effect of weight on fuel efficiency may differ across engine sizes. Including this interaction provides a more realistic representation of vehicle performance and leads to improved model fit.\
+
+```{r}
+cars_lm_int <- glm(mpg ~ wt * factor(cyl), data = mtcars)
+summary(cars_lm_int)
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point() +
+  geom_smooth(method = "lm", se= FALSE) +
+  ggtitle("MPG vs Weight with Cylinder Interaction (GLM)")+
+  labs(color = "Cylinders")
+
+```
+
+Heavier vehicles consume more fuel, but the *rate* at which fuel efficiency declines depends on engine size. Four-cylinder cars lose mpg more gradually with added weight, while eight-cylinder vehicles experience a steeper decline, reflecting higher energy demands from larger engines.
+
+## Application
+
+Interaction effects are used every day across industries because the impact of one factor often depends on another. For example, in automotive design, the effect of vehicle weight on fuel efficiency depends on engine size; in healthcare, a treatment’s effectiveness may depend on patient age or comorbidities; in finance, the impact of interest rates on loan defaults can vary by credit score; and in marketing, the effect of advertising spend depends on the target audience. Modeling interactions allows analysts to capture these conditional relationships, leading to more accurate predictions and better decision-making than models that assume one-size-fits-all effects

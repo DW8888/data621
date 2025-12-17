@@ -3,7 +3,7 @@ title: "Modeling Medical Costs Through Regression"
 subtitle: "CUNY SPS DATA 621"
 author: "Darwhin Gomez"
 format:
-  pdf:
+  html:
     toc: true
     number-sections: false
 execute:
@@ -17,7 +17,7 @@ model_gamma_final   <- readRDS("models/model_gamma_final.rds")
 model_interaction   <- readRDS("models/model_interaction.rds")
 model_linear        <- readRDS("models/model_linear.rds")
 log_interaction_lm  <- readRDS("models/log_interaction_lm.rds")
-
+predictions_df <-read.csv2("predictions.csv")
 ```
 
 Medical costs represent a significant financial burden for individuals and are a primary reason health insurance coverage is widely sought. Accurately understanding the factors that drive medical insurance charges is essential for insurers seeking to price plans fairly and sustainably, as well as for policymakers concerned with healthcare affordability. This paper aims to model the relationship between individual medical insurance costs and selected demographic, health-related, and behavioral indicators using linear regression techniques. Using a dataset of insured individuals in the United States, we examine how factors such as age, body mass index (BMI), smoking status, number of dependents, and geographic region influence medical charges. Multiple regression models are developed and evaluated to identify statistically significant predictors and assess model assumptions. The results provide interpretable insights into the primary drivers of medical insurance costs and demonstrate the usefulness of regression modeling in health economics and insurance pricing applications.
@@ -185,5 +185,10 @@ Abdelghany, M. (2025). *Medical insurance cost dataset* \[Data set\]. Kaggle. <h
 
 [R code Link](https://github.com/DW8888/data621/blob/main/FinalProject/analysis.Rmd)
 
-```         
+### Predictions
+
+```{r,echo=FALSE}
+colnames(predictions_df) <- "Predicted charges"
+
+print(predictions_df)
 ```
